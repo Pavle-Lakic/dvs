@@ -103,6 +103,8 @@ end component;
 	signal c_res : std_logic;
 	signal c_run_diff : std_logic;
 	
+	signal status_reg_state : std_logic_vector (2 downto 0);
+	
 	signal s_nopp : natural range 0 to 262144;
 	signal s_cnt  : natural range 0 to 256;
 	
@@ -134,43 +136,24 @@ DIFF_C_RUN: diff port map(
 );
 
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
-	--status_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = STATUS_ADDR) else '0';
-	
-	--c_run <= control_reg(31);
-	--c_res <= control_reg(30);
-	--reset_ram <= c_res or reset;
-	--clear_ram <= control_reg(29);
-	
-	--c_nop <= unsigned(control_reg(18 downto 0));
-	
+	reset_ram <= c_res or reset;
 	--aso_out_data <= output_sample;
 	
-	control_register : process(clk, reset) is 
+	write_control_reg : process(clk, reset) is 
 	begin
 		if (reset = '1') then
+			control_reg <= (others => '0');
 			c_run <= '0';
 			c_res <= '0';
 			clear_ram <= '0';
 			c_nop <= (others => '0');
-		elsif (rising_edge(clk)) then
-			c_run <= control_reg(31);
-			c_res <= control_reg(30);
-			clear_ram <= control_reg(29);
-			c_nop <= unsigned(control_reg(18 downto 0));
-		end if;
-	end process;
-
-	write_control_reg : process(clk, reset) is 
-	begin
-
-		if (reset = '1' or c_res = '1') then
-			control_reg <= x"00000000";
-			--status_reg <= x"00000000";
 		elsif(rising_edge(clk)) then
 			if (control_strobe = '1') then
 				control_reg(31 downto 0) <= avs_control_writedata;
-			--elsif (status_strobe = '1') then
-				--status_reg(31 downto 0) <= avs_control_writedata;
+				c_run <= control_reg(31);
+				c_res <= control_reg(30);
+				clear_ram <= control_reg(29);
+				c_nop <= unsigned(control_reg(18 downto 0));
 			end if;
 		end if;
 		
@@ -229,8 +212,7 @@ DIFF_C_RUN: diff port map(
 		elsif (rising_edge(clk)) then
 			current_state <= next_state;
 		end if;
-	end process;
-	
+	end process;	
 	
 	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt)
 	begin
@@ -266,6 +248,17 @@ DIFF_C_RUN: diff port map(
 				next_state <= wait_output;
 				
 		end case;
+	end process;	
+	
+	status_reg_control: process(clk, reset) is
+	begin
+		if (reset = '1' or c_res = '1') then
+			status_reg <= (others => '0');
+		elsif (rising_edge(clk)) then
+			status_reg(31 downto 29) <= status_reg_state;
+			status_reg(27 downto 9) <= std_logic_vector(to_unsigned(s_nopp, 19));
+			status_reg(8 downto 0) <= std_logic_vector(to_unsigned(s_cnt, 9));		
+		end if;
 	end process;
 	
 	output_process: process(current_state) is
@@ -277,14 +270,21 @@ DIFF_C_RUN: diff port map(
 				s_nopp <= 0;
 				s_cnt <= 0;
 				
+				status_reg_state <= "000";
+				
 			when wait_input =>
 				asi_in_ready <= in_ready_ram;
 				inc_ram <= '0';
+				
+				status_reg_state <= "001";
 			
-			when process_state =>
+			when process_state =>	
+			
 				asi_in_ready <= in_ready_ram;
 				inc_ram <= '1';
 				s_nopp <= s_nopp + 1;
+				
+				status_reg_state <= "010";
 	
 			when wait_output =>
 				asi_in_ready <= '0';
@@ -292,13 +292,17 @@ DIFF_C_RUN: diff port map(
 				aso_out_valid <= out_valid_ram;
 				adrr_ready_ram <= '0';
 				
+				status_reg_state <= "011";
+				
 			when output_read =>
 				asi_in_ready <= '0';
 				inc_ram <= '0';
 				aso_out_valid <= out_valid_ram;
 				adrr_ready_ram <= '1';
 				s_cnt <= s_cnt + 1;
-		
+				
+				status_reg_state <= "100";
+
 		end case;
 	end process;
 	
