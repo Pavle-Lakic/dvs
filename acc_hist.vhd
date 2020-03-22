@@ -73,7 +73,7 @@ end component;
 	signal control_reg : std_logic_vector(31 downto 0);
 	signal status_reg : std_logic_vector (31 downto 0);
 	signal control_strobe : std_logic;
-	signal status_strobe  : std_logic;
+	--signal status_strobe  : std_logic;
 	constant CONTROL_ADDR : std_logic := '1';
 	constant STATUS_ADDR  : std_logic := '0';
 
@@ -134,7 +134,7 @@ DIFF_C_RUN: diff port map(
 );
 
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
-	status_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = STATUS_ADDR) else '0';
+	--status_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = STATUS_ADDR) else '0';
 	
 	--c_run <= control_reg(31);
 	--c_res <= control_reg(30);
@@ -165,12 +165,12 @@ DIFF_C_RUN: diff port map(
 
 		if (reset = '1' or c_res = '1') then
 			control_reg <= x"00000000";
-			status_reg <= x"00000000";
+			--status_reg <= x"00000000";
 		elsif(rising_edge(clk)) then
 			if (control_strobe = '1') then
 				control_reg(31 downto 0) <= avs_control_writedata;
-			elsif (status_strobe = '1') then
-				status_reg(31 downto 0) <= avs_control_writedata;
+			--elsif (status_strobe = '1') then
+				--status_reg(31 downto 0) <= avs_control_writedata;
 			end if;
 		end if;
 		
