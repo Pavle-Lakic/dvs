@@ -108,11 +108,6 @@ end component;
 	signal s_nopp : natural range 0 to 262144;
 	signal s_cnt  : natural range 0 to 256;
 	
-	--signal int_asi_in_ready : std_logic;
-	
-	-- treba adrese da se rese u output masini stanja
-	-- i za input masinu stanja.
-
 begin
 RAM: ram_controler port map(
 		address => input_sample,
@@ -214,7 +209,7 @@ DIFF_C_RUN: diff port map(
 		end if;
 	end process;	
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt)
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt, s_nopp) -- mozda ce da fali jos nesto kasnije u senz listi
 	begin
 		case current_state is
 
@@ -261,46 +256,59 @@ DIFF_C_RUN: diff port map(
 		end if;
 	end process;
 	
-	output_process: process(current_state) is
+	counter_process: process(clk, reset, status_reg_state, c_res) is
 	begin
-		case(current_state) is			
-			when idle =>
+		if (reset = '1' or c_res = '1') then
+			asi_in_ready <= '0';
+			inc_ram <= '0';
+			s_nopp <= 0;
+			s_cnt <= 0;
+		elsif (rising_edge(clk)) then
+			if (status_reg_state = "000") then
 				asi_in_ready <= '0';
 				inc_ram <= '0';
 				s_nopp <= 0;
 				s_cnt <= 0;
-				
-				status_reg_state <= "000";
-				
-			when wait_input =>
+				adrr_ready_ram <= '0';
+			elsif (status_reg_state = "001") then
 				asi_in_ready <= in_ready_ram;
 				inc_ram <= '0';
-				
-				status_reg_state <= "001";
-			
-			when process_state =>	
-			
+			elsif (status_reg_state = "010") then
 				asi_in_ready <= in_ready_ram;
 				inc_ram <= '1';
 				s_nopp <= s_nopp + 1;
-				
-				status_reg_state <= "010";
-	
-			when wait_output =>
+			elsif(status_reg_state = "011") then
 				asi_in_ready <= '0';
 				inc_ram <= '0';
 				aso_out_valid <= out_valid_ram;
 				adrr_ready_ram <= '0';
-				
-				status_reg_state <= "011";
-				
-			when output_read =>
+			elsif(status_reg_state = "100") then
 				asi_in_ready <= '0';
 				inc_ram <= '0';
 				aso_out_valid <= out_valid_ram;
 				adrr_ready_ram <= '1';
-				s_cnt <= s_cnt + 1;
+				s_cnt <= s_cnt + 1		
+			end if;
+		end if;
+	end process;
+	
+	output_process: process(current_state) is
+	begin
+		case(current_state) is			
+			when idle =>
+				status_reg_state <= "000";
 				
+			when wait_input =>
+				status_reg_state <= "001";
+			
+			when process_state =>	
+			
+				status_reg_state <= "010";
+	
+			when wait_output =>				
+				status_reg_state <= "011";
+				
+			when output_read =>			
 				status_reg_state <= "100";
 
 		end case;
