@@ -111,7 +111,7 @@ BEGIN
 	avs_control_address <= '1';
 	wait for clk_period;
 	avs_control_write <= '1';
-	wait for clk_period;
+	wait for 10*clk_period;
 	avs_control_write <= '0';
 	wait for clk_period;
 	avs_control_read <= '1';
@@ -121,13 +121,13 @@ BEGIN
 	avs_control_writedata <= x"40000000";
 	wait for clk_period;
 	avs_control_write <= '1';
-	wait for 3*clk_period;
+	wait for 10*clk_period;
 	avs_control_write <='0';
 	wait for 3*clk_period;
 	avs_control_writedata <= x"0EADBEEF";
 	wait for clk_period;
 	avs_control_write <= '1';
-	wait for clk_period;
+	wait for 10*clk_period;
 	avs_control_write <= '0';
 	wait for clk_period;
 	avs_control_writedata <= x"20000000";
@@ -142,6 +142,12 @@ BEGIN
 	wait for 2*clk_period;
 	avs_control_write <= '0';
 	wait for 20 us;
+	avs_control_writedata <= x"80001000";
+	wait for clk_period;
+	avs_control_write <= '1';
+	wait for 10*clk_period;
+	avs_control_write <='0';
+	
 	
 WAIT;                                                        
 END PROCESS always;                                          
