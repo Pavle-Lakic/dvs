@@ -55,6 +55,21 @@ component ram_controler is
 	);
 end component;
 
+component diff is
+	port
+	(
+		-- Input ports
+		
+		input	: in  std_logic;
+		clk	: in std_logic;
+		reset : in std_logic;
+		-- Output ports
+		
+		output	: out std_logic
+		
+	);
+end component;
+
 	signal control_reg : std_logic_vector(31 downto 0);
 	signal status_reg : std_logic_vector (31 downto 0);
 	signal control_strobe : std_logic;
@@ -112,9 +127,10 @@ RAM: ram_controler port map(
 
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
 	status_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = STATUS_ADDR) else '0';
+	
 	--c_run <= control_reg(31);
 	--c_res <= control_reg(30);
-	reset_ram <= c_res or reset;
+	--reset_ram <= c_res or reset;
 	--clear_ram <= control_reg(29);
 	
 	--c_nop <= unsigned(control_reg(18 downto 0));
@@ -139,7 +155,7 @@ RAM: ram_controler port map(
 	write_control_reg : process(clk, reset) is 
 	begin
 
-		if (reset = '1' or c_run = '1') then
+		if (reset = '1' or c_res = '1') then
 			control_reg <= x"00000000";
 			status_reg <= x"00000000";
 		elsif(rising_edge(clk)) then
@@ -208,7 +224,7 @@ RAM: ram_controler port map(
 	end process;
 	
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready)
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run, s_cnt)
 	begin
 		case current_state is
 
