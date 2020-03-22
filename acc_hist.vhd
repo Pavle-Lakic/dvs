@@ -101,6 +101,7 @@ end component;
 	signal c_nop : unsigned (18 downto 0);	
 	signal c_run : std_logic;
 	signal c_res : std_logic;
+	signal c_run_diff : std_logic;
 	
 	signal s_nopp : natural range 0 to 262144;
 	signal s_cnt  : natural range 0 to 256;
@@ -123,6 +124,13 @@ RAM: ram_controler port map(
 		in_ready => in_ready_ram,
 		out_valid => out_valid_ram,
 		q => q_ram
+);
+
+DIFF_C_RUN: diff port map(
+		input => c_run,
+		clk => clk,
+		reset => reset,
+		output => c_run_diff
 );
 
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
@@ -224,12 +232,12 @@ RAM: ram_controler port map(
 	end process;
 	
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run, s_cnt)
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt)
 	begin
 		case current_state is
 
 			when idle =>		
-				if (c_run = '1') then	
+				if (c_run_diff = '1') then	
 					next_state <= wait_input;
 				else
 					next_state <= idle;
