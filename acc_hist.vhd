@@ -93,7 +93,7 @@ end component;
 	signal wren_ram : std_logic;
 	signal adrr_ready_ram : std_logic;
 	signal reset_ram : std_logic;
-	signal clear_ram : std_logic;
+	signal c_clear : std_logic;
 	signal inc_ram : std_logic;
 	signal in_ready_ram : std_logic;
 	signal out_valid_ram : std_logic;
@@ -116,7 +116,7 @@ RAM: ram_controler port map(
 		wren => wren_ram,
 		addr_ready => adrr_ready_ram,
 		reset => reset_ram,
-		clear => clear_ram,
+		clear => c_clear,
 		inc => inc_ram,
 		in_ready => in_ready_ram,
 		out_valid => out_valid_ram,
@@ -140,14 +140,14 @@ DIFF_C_RUN: diff port map(
 			control_reg <= (others => '0');
 			c_run <= '0';
 			c_res <= '0';
-			clear_ram <= '0';
+			c_clear <= '0';
 			c_nop <= (others => '0');
 		elsif(rising_edge(clk)) then
 			if (control_strobe = '1') then
 				control_reg(31 downto 0) <= avs_control_writedata;
 				c_run <= control_reg(31);
 				c_res <= control_reg(30);
-				clear_ram <= control_reg(29);
+				c_clear <= control_reg(29);
 				c_nop <= unsigned(control_reg(18 downto 0));
 			end if;
 		end if;
@@ -287,7 +287,7 @@ DIFF_C_RUN: diff port map(
 				inc_ram <= '0';
 				aso_out_valid <= out_valid_ram;
 				adrr_ready_ram <= '1';
-				s_cnt <= s_cnt + 1		
+				s_cnt <= s_cnt + 1;		
 			end if;
 		end if;
 	end process;

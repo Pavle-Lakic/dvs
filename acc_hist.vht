@@ -153,6 +153,24 @@ BEGIN
 	asi_in_valid <= '1';
 	wait for clk_period;
 	asi_in_valid <= '0';
+	wait for 5*clk_period;
+	asi_in_data <= x"80";
+	wait for clk_period;
+	asi_in_valid <= '1';
+	wait for clk_period;
+	asi_in_valid <= '0';
+	wait for 5*clk_period;
+	asi_in_data <= x"00";
+	wait for clk_period;
+	asi_in_valid <= '1';
+	wait for clk_period;
+	asi_in_valid <= '0';
+	wait for 5*clk_period;
+	asi_in_data <= x"80";
+	wait for clk_period;
+	asi_in_valid <= '1';
+	wait for clk_period;
+	asi_in_valid <= '0';
 	
 	
 WAIT;                                                        
