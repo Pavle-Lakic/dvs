@@ -70,10 +70,21 @@ component diff is
 	);
 end component;
 
+--	CONTROL_REG
+--	 ____________________________________________
+--	| c_run | c_res | c_clear | reserved | c_nop |
+--	|   31  |   30  |   29    |  28..19  | 18..0 |
+
 	signal control_reg : std_logic_vector(31 downto 0);
+	
+--	STATUS_REG
+--	 ______________________________________________
+--	| status_reg_state | reserved | s_nopp | s_cnt |
+--	|      31..30      |  29..28  | 27..9  | 8..0  |
+
 	signal status_reg : std_logic_vector (31 downto 0);
+	
 	signal control_strobe : std_logic;
-	--signal status_strobe  : std_logic;
 	constant CONTROL_ADDR : std_logic := '1';
 	constant STATUS_ADDR  : std_logic := '0';
 
