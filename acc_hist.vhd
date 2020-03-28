@@ -94,7 +94,8 @@ end component;
 				  wait_input,
 				  process_state, -- waiting for input to be processed, valid data in input register, no valid data in output register
 				  wait_output,
-				  output_read); -- waiting for someone to receive data from output register, valid data in output register, no valid data in input register)
+				  output_read,
+				  done); -- waiting for someone to receive data from output register, valid data in output register, no valid data in input register)
 
 	signal current_state, next_state : state;
 
@@ -103,7 +104,7 @@ end component;
 	signal data_ram	: std_logic_vector(15 downto 0);
 	signal wren_ram : std_logic;
 	signal adrr_ready_ram : std_logic;
-	signal reset_ram : std_logic;
+	signal reset_global : std_logic;
 	signal c_clear : std_logic;
 	signal inc_ram : std_logic;
 	signal in_ready_ram : std_logic;
@@ -113,8 +114,10 @@ end component;
 	signal c_run : std_logic;
 	signal c_res : std_logic;
 	signal c_run_diff : std_logic;
+	signal c_clear_diff : std_logic;
 	
 	signal status_reg_state : std_logic_vector (2 downto 0);
+	signal addr_ram : std_logic_vector(7 downto 0);
 	
 	signal s_nopp : natural range 0 to 262144;
 	signal s_cnt  : natural range 0 to 256;
@@ -126,8 +129,8 @@ RAM: ram_controler port map(
 		data => data_ram,
 		wren => wren_ram,
 		addr_ready => adrr_ready_ram,
-		reset => reset_ram,
-		clear => c_clear,
+		reset => reset_global,
+		clear => c_clear_diff,
 		inc => inc_ram,
 		in_ready => in_ready_ram,
 		out_valid => out_valid_ram,
@@ -137,13 +140,20 @@ RAM: ram_controler port map(
 DIFF_C_RUN: diff port map(
 		input => c_run,
 		clk => clk,
-		reset => reset,
+		reset => reset_global,
 		output => c_run_diff
 );
 
+DIFF_C_CLEAR: diff port map(
+		input => control_reg(29),
+		clk => clk,
+		reset => reset_global,
+		output => c_clear_diff
+);
+
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
-	reset_ram <= c_res or reset;
-	--aso_out_data <= output_sample;
+	reset_global <= c_res or reset;
+	aso_out_data <= output_sample;
 	
 	write_control_reg : process(clk, reset) is 
 	begin
@@ -187,12 +197,12 @@ DIFF_C_RUN: diff port map(
 
 	avs_control_waitrequest <= avs_control_read and control_waitrq;
 	
-	process_sample : process(clk, reset)
+	process_sample : process(clk, reset, current_state, aso_out_ready)
 	begin
 		if (reset = '1'  or c_res = '1') then
 			output_sample <= x"BEEF";
 		elsif (rising_edge(clk)) then
-			if ((current_state = wait_output) and aso_out_ready = '1') then
+			if ((current_state = output_read) and aso_out_ready = '1') then
 				output_sample (15 downto 0) <= q_ram;
 			end if;
 		end if;
@@ -200,12 +210,14 @@ DIFF_C_RUN: diff port map(
 	
 	aso_out_data <= output_sample;
 	
-	read_sample : process(clk, reset)
+	read_sample : process(clk, reset, s_cnt, current_state)
 	begin
 		if (reset = '1'  or c_res = '1') then
 			input_sample <= x"00";
 		elsif (rising_edge(clk)) then
-			if (in_ready_ram = '1' and asi_in_valid = '1') then
+			if (current_state = wait_output) then
+				input_sample <= std_logic_vector(to_unsigned(s_cnt, 8));
+			elsif (in_ready_ram = '1' and asi_in_valid = '1') then
 				input_sample <= asi_in_data;
 			end if;
 		end if;
@@ -220,12 +232,11 @@ DIFF_C_RUN: diff port map(
 		end if;
 	end process;	
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt, s_nopp) -- mozda ce da fali jos nesto kasnije u senz listi
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt, s_nopp, in_ready_ram, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
 	begin
 		case current_state is
-
 			when idle =>		
-				if (c_run_diff = '1') then	
+				if (c_run_diff = '1' and in_ready_ram = '1') then	
 					next_state <= wait_input;
 				else
 					next_state <= idle;
@@ -234,7 +245,7 @@ DIFF_C_RUN: diff port map(
 			when wait_input =>
 				if (s_nopp = c_nop) then
 					next_state <= wait_output;
-				elsif (asi_in_valid = '1') then
+				elsif (asi_in_valid = '1' and in_ready_ram = '1') then
 					next_state <= process_state;
 				else
 					next_state <= wait_input;
@@ -244,14 +255,17 @@ DIFF_C_RUN: diff port map(
 				next_state <= wait_input;
 								
 			when wait_output =>
-				if (s_cnt = 256) then
-					next_state <= idle;
-				elsif (aso_out_ready = '1') then
+				if (s_cnt = 255) then
+					next_state <= done;
+				elsif (aso_out_ready = '1' and in_ready_ram = '1') then
 					next_state <= output_read;
 				end if;
 				
 			when output_read =>
 				next_state <= wait_output;
+				
+			when done =>
+				next_state <= done;
 				
 		end case;
 	end process;	
@@ -270,34 +284,15 @@ DIFF_C_RUN: diff port map(
 	counter_process: process(clk, reset, status_reg_state, c_res) is
 	begin
 		if (reset = '1' or c_res = '1') then
-			asi_in_ready <= '0';
-			inc_ram <= '0';
 			s_nopp <= 0;
 			s_cnt <= 0;
 		elsif (rising_edge(clk)) then
 			if (status_reg_state = "000") then
-				asi_in_ready <= '0';
-				inc_ram <= '0';
 				s_nopp <= 0;
 				s_cnt <= 0;
-				adrr_ready_ram <= '0';
-			elsif (status_reg_state = "001") then
-				asi_in_ready <= in_ready_ram;
-				inc_ram <= '0';
 			elsif (status_reg_state = "010") then
-				asi_in_ready <= in_ready_ram;
-				inc_ram <= '1';
 				s_nopp <= s_nopp + 1;
-			elsif(status_reg_state = "011") then
-				asi_in_ready <= '0';
-				inc_ram <= '0';
-				aso_out_valid <= out_valid_ram;
-				adrr_ready_ram <= '0';
 			elsif(status_reg_state = "100") then
-				asi_in_ready <= '0';
-				inc_ram <= '0';
-				aso_out_valid <= out_valid_ram;
-				adrr_ready_ram <= '1';
 				s_cnt <= s_cnt + 1;		
 			end if;
 		end if;
@@ -308,20 +303,52 @@ DIFF_C_RUN: diff port map(
 		case(current_state) is			
 			when idle =>
 				status_reg_state <= "000";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+				adrr_ready_ram <= '0';
+				inc_ram <= '0';
+				addr_ram <= input_sample;
 				
 			when wait_input =>
 				status_reg_state <= "001";
+				aso_out_valid <= '0';
+				asi_in_ready <= in_ready_ram;
+				adrr_ready_ram <= '0';
+				inc_ram <= '0';
+				addr_ram <= input_sample;
 			
 			when process_state =>	
-			
 				status_reg_state <= "010";
+				aso_out_valid <= '0';
+				asi_in_ready <= in_ready_ram;
+				adrr_ready_ram <= '0';
+				inc_ram <= '1';
+				addr_ram <= input_sample;
 	
 			when wait_output =>				
 				status_reg_state <= "011";
+				aso_out_valid <= out_valid_ram;
+				asi_in_ready <= '0';
+				adrr_ready_ram <= '0';
+				inc_ram <= '0';
+				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
 				
 			when output_read =>			
 				status_reg_state <= "100";
-
+				aso_out_valid <= out_valid_ram;
+				asi_in_ready <= '0';
+				adrr_ready_ram <= '1';
+				inc_ram <= '0';
+				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
+			
+			when done =>
+				status_reg_state <= "101";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+				adrr_ready_ram <= '0';
+				inc_ram <= '0';
+				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
+				
 		end case;
 	end process;
 	
