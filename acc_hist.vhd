@@ -117,7 +117,6 @@ end component;
 	signal c_clear_diff : std_logic;
 	
 	signal status_reg_state : std_logic_vector (2 downto 0);
-	signal addr_ram : std_logic_vector(7 downto 0);
 	
 	signal s_nopp : natural range 0 to 262144;
 	signal s_cnt  : natural range 0 to 256;
@@ -151,35 +150,39 @@ DIFF_C_CLEAR: diff port map(
 		output => c_clear_diff
 );
 
-	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
+	--control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
 	reset_global <= c_res or reset;
 	aso_out_data <= output_sample;
 	
-	write_control_reg : process(clk, reset) is 
+	write_control_reg : process(clk, reset, control_strobe, avs_control_write) is 
 	begin
 		if (reset = '1') then
 			control_reg <= (others => '0');
-			c_run <= '0';
+		elsif(rising_edge(clk)) then
+			if (avs_control_write = '1') then
+				control_reg(31 downto 0) <= avs_control_writedata;
+			end if;
+		end if;
+	end process;
+	
+	c_bits_write : process(clk, reset) is 
+	begin
+		if (reset = '1') then
 			c_res <= '0';
 			c_clear <= '0';
 			c_nop <= (others => '0');
-		elsif(rising_edge(clk)) then
-			if (control_strobe = '1') then
-				control_reg(31 downto 0) <= avs_control_writedata;
-				c_run <= control_reg(31);
-				c_res <= control_reg(30);
-				c_clear <= control_reg(29);
-				c_nop <= unsigned(control_reg(18 downto 0));
-			end if;
+		elsif (rising_edge(clk)) then
+			c_run <= control_reg(31);
+			c_res <= control_reg(30);
+			c_clear <= control_reg(29);
+			c_nop <= unsigned(control_reg(18 downto 0));
 		end if;
-		
 	end process;
 
-	read_control_reg : process(clk, reset) is
+	read_control_reg : process(clk, reset, c_res) is
 	begin
-
 		if (reset = '1' or c_res = '1') then
-			avs_control_readdata <= x"ffffffff";
+			avs_control_readdata <= x"00000000";
 			control_waitrq <= '1';			
 		elsif(rising_edge(clk)) then
 			control_waitrq <= '1';
@@ -307,7 +310,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= '0';
 				adrr_ready_ram <= '0';
 				inc_ram <= '0';
-				addr_ram <= input_sample;
 				
 			when wait_input =>
 				status_reg_state <= "001";
@@ -315,7 +317,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= in_ready_ram;
 				adrr_ready_ram <= '0';
 				inc_ram <= '0';
-				addr_ram <= input_sample;
 			
 			when process_state =>	
 				status_reg_state <= "010";
@@ -323,7 +324,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= in_ready_ram;
 				adrr_ready_ram <= '0';
 				inc_ram <= '1';
-				addr_ram <= input_sample;
 	
 			when wait_output =>				
 				status_reg_state <= "011";
@@ -331,7 +331,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= '0';
 				adrr_ready_ram <= '0';
 				inc_ram <= '0';
-				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
 				
 			when output_read =>			
 				status_reg_state <= "100";
@@ -339,7 +338,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= '0';
 				adrr_ready_ram <= '1';
 				inc_ram <= '0';
-				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
 			
 			when done =>
 				status_reg_state <= "101";
@@ -347,7 +345,6 @@ DIFF_C_CLEAR: diff port map(
 				asi_in_ready <= '0';
 				adrr_ready_ram <= '0';
 				inc_ram <= '0';
-				addr_ram <= std_logic_vector(to_unsigned(s_cnt, 8));
 				
 		end case;
 	end process;
