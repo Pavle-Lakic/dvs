@@ -71,6 +71,7 @@ component diff is
 end component;
 
 --	CONTROL_REG
+-- Sa njim moze da se vrsi i upis i citanje.
 --	 ____________________________________________
 --	| c_run | c_res | c_clear | reserved | c_nop |
 --	|   31  |   30  |   29    |  28..19  | 18..0 |
@@ -78,47 +79,89 @@ end component;
 	signal control_reg : std_logic_vector(31 downto 0);
 	
 --	STATUS_REG
+-- Iz statusnog registra moze samo da se cita.
 --	 ______________________________________________
 --	| status_reg_state | reserved | s_nopp | s_cnt |
---	|      31..30      |  29..28  | 27..9  | 8..0  |
+--	|      31..29      |    28    | 27..9  | 8..0  |
 
 	signal status_reg : std_logic_vector (31 downto 0);
 	
+	-- oznacava da je statusni registar adresiran, i da je avs_control_write bit aktivan
 	signal control_strobe : std_logic;
+	
+	-- adresa kontrolnog registra
 	constant CONTROL_ADDR : std_logic := '1';
+	
+	-- adresa statusnog registra
 	constant STATUS_ADDR  : std_logic := '0';
 
+	-- pomocni signal koji omogucava citanje iz registra, za avs_control_waitrequest
 	signal control_waitrq : std_logic;
 
-	type state is (idle, 		-- waiting for input data, no valid data in output register, no valid data in input register
-				  wait_input,
-				  process_state, -- waiting for input to be processed, valid data in input register, no valid data in output register
-				  wait_output,
-				  output_read,
-				  done); -- waiting for someone to receive data from output register, valid data in output register, no valid data in input register)
+	type state is (idle, 		-- cekanje softverskog starta, pre starta treba resetovati RAM							"000"
+				  wait_input,		-- nakon starta, cekanje da RAM bude spreman da primi podatak, i ulaz validan		"001"
+				  process_state, 	-- medjustanje 																						"010"
+				  wait_output,		-- cekanje da izlazni DMA bude spreman da procita podatak								"011"
+				  output_read,		-- upis u izlazni DMA																				"100"
+				  done); 			-- stanje da je sve zavrseno, iz njega moze nazad samo soft ili hard resetom		"101"
 
 	signal current_state, next_state : state;
 
+	-- ulazni piksel, iz ulaznog DMA, ponasa se kao adresa u RAM-u u ovom modulu
 	signal input_sample : std_logic_vector(7 downto 0);
+	
+	-- izlazni podatak, u izlazni DMA
 	signal output_sample : std_logic_vector(15 downto 0);
+	
+	-- za sada se ne koristi, moze kasnije kao specificni ulazni podatak u RAM
 	signal data_ram	: std_logic_vector(15 downto 0);
+	
+	-- signal dozvole za upis u RAM, za sada se ne koristi
 	signal wren_ram : std_logic;
+	
+	-- signal da je spreman podatak na nekoj adresi da se procita iz RAM, za stanje output_read sluzi
 	signal adrr_ready_ram : std_logic;
+	
+	-- postavlja se na aktivno stanje kada je ili softverski ili hardverski reset aktivan
 	signal reset_global : std_logic;
+	
+	-- signal za postavljanje svih podataka u RAM-u na 0
 	signal c_clear : std_logic;
+	
+	-- signal koji sluzi da se na postavljenoj adresi podatak poveca za 1
 	signal inc_ram : std_logic;
+	
+	-- oznacava da je RAM spreman da primi nov podatak
 	signal in_ready_ram : std_logic;
+	
+	-- oznacava da je na izlaznom baferu u ramu validan podatak
 	signal out_valid_ram : std_logic;
+	
+	-- izlazni podatak iz RAM-a
 	signal q_ram : std_logic_vector (15 downto 0);
+	
+	-- signal koji oznacava broj piksela koji treba da se obradi
 	signal c_nop : unsigned (18 downto 0);	
+	
+	-- softverski znak da modul treba da zapocne rad
 	signal c_run : std_logic;
+	
+	-- softverski reset
 	signal c_res : std_logic;
+	
+	-- diferenciran c_run
 	signal c_run_diff : std_logic;
+	
+	-- diferenciran c_clear
 	signal c_clear_diff : std_logic;
 	
+	-- prva 3 bita statusnog registra, oznacavaju stanje
 	signal status_reg_state : std_logic_vector (2 downto 0);
 	
+	-- oznacava broj obradjenih piksela
 	signal s_nopp : natural range 0 to 262144;
+	
+	-- oznacava do koje je adrese izlazni DMA stigao sa citanjem iz RAM-a
 	signal s_cnt  : natural range 0 to 256;
 	
 begin
@@ -136,6 +179,7 @@ RAM: ram_controler port map(
 		q => q_ram
 );
 
+-- diferencira c_run da ne bi run-ovao non stop, doduse reseno sa stanjem done
 DIFF_C_RUN: diff port map(
 		input => c_run,
 		clk => clk,
@@ -143,6 +187,7 @@ DIFF_C_RUN: diff port map(
 		output => c_run_diff
 );
 
+-- diferencira c_clear da ne bi non stop clear-ovao RAM, vec da mora to da se uradi ponovnim upisom
 DIFF_C_CLEAR: diff port map(
 		input => control_reg(29),
 		clk => clk,
@@ -150,10 +195,16 @@ DIFF_C_CLEAR: diff port map(
 		output => c_clear_diff
 );
 
-	--control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
+	-- za upis u kontrolni registar
+	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
+	
+	-- softverski i hardverski reset zajedno
 	reset_global <= c_res or reset;
+	
+	--za izlazni DMA
 	aso_out_data <= output_sample;
 	
+	-- proces za upis u kontrolni registar
 	write_control_reg : process(clk, reset, control_strobe, avs_control_write) is 
 	begin
 		if (reset = '1') then
@@ -165,6 +216,7 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 	
+	-- uzimanje znacajnih vrednosti iz kontrolnog registra
 	c_bits_write : process(clk, reset) is 
 	begin
 		if (reset = '1') then
@@ -179,14 +231,15 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 
-	read_control_reg : process(clk, reset, c_res) is
+	-- citanje iz controlnog i statusnog registra, ako kontolni nije adresiran, uvek je statusni
+	read_mmaped_reg : process(clk, reset, c_res) is
 	begin
-		if (reset = '1' or c_res = '1') then
+		if (reset_global = '1') then
 			avs_control_readdata <= x"00000000";
 			control_waitrq <= '1';			
 		elsif(rising_edge(clk)) then
 			control_waitrq <= '1';
-			if (avs_control_read = '1') then
+			if (control_strobe = '1') then
 				control_waitrq <= '0';
 				if (avs_control_address = CONTROL_ADDR) then
 					avs_control_readdata <= control_reg;
@@ -194,15 +247,16 @@ DIFF_C_CLEAR: diff port map(
 					avs_control_readdata <= status_reg;
 				end if;
 			end if;
-		end if;
-		
+		end if;	
 	end process;
 
+	-- da bi moglo da se cita iz registra
 	avs_control_waitrequest <= avs_control_read and control_waitrq;
 	
+	-- proces za ispis izlaza RAM-a u output sample, a samim tim i u aso_out_data
 	process_sample : process(clk, reset, current_state, aso_out_ready)
 	begin
-		if (reset = '1'  or c_res = '1') then
+		if (reset_global = '1') then
 			output_sample <= x"BEEF";
 		elsif (rising_edge(clk)) then
 			if ((current_state = output_read) and aso_out_ready = '1') then
@@ -211,11 +265,10 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 	
-	aso_out_data <= output_sample;
-	
+	-- citanje podatka iz asi_in_data kada je RAM spreman da primi nove podatke i kada je ulaz validan
 	read_sample : process(clk, reset, s_cnt, current_state)
 	begin
-		if (reset = '1'  or c_res = '1') then
+		if (reset_global = '1') then
 			input_sample <= x"00";
 		elsif (rising_edge(clk)) then
 			if (current_state = wait_output) then
@@ -226,15 +279,17 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 	
+	-- ideja je Moore-ova masina stanja da se napravi
 	control_fsm: process(clk, reset)
 	begin
-		if (reset = '1'  or c_res = '1') then
+		if (reset_global = '1') then
 			current_state <= idle;
 		elsif (rising_edge(clk)) then
 			current_state <= next_state;
 		end if;
 	end process;	
 	
+	-- logika masine stanja
 	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run_diff, s_cnt, s_nopp, in_ready_ram, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
 	begin
 		case current_state is
@@ -273,9 +328,10 @@ DIFF_C_CLEAR: diff port map(
 		end case;
 	end process;	
 	
+	-- proces koji na osnovu stanja i countera update-uje statusni registar
 	status_reg_control: process(clk, reset) is
 	begin
-		if (reset = '1' or c_res = '1') then
+		if (reset_global = '1') then
 			status_reg <= (others => '0');
 		elsif (rising_edge(clk)) then
 			status_reg(31 downto 29) <= status_reg_state;
@@ -284,9 +340,10 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 	
+	-- proces koji broji counter-e, sinhroni mora da bude
 	counter_process: process(clk, reset, status_reg_state, c_res) is
 	begin
-		if (reset = '1' or c_res = '1') then
+		if (reset_global = '1') then
 			s_nopp <= 0;
 			s_cnt <= 0;
 		elsif (rising_edge(clk)) then
@@ -301,6 +358,7 @@ DIFF_C_CLEAR: diff port map(
 		end if;
 	end process;
 	
+	-- na osnovu stanja postavlja izlaze
 	output_process: process(current_state) is
 	begin
 		case(current_state) is			
