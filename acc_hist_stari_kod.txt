@@ -232,13 +232,13 @@ DIFF_C_CLEAR: diff port map(
 	end process;
 
 	-- citanje iz controlnog i statusnog registra, ako kontrolni nije adresiran, uvek je statusni
-	read_mmaped_reg : process(clk, avs_control_address) is
+	read_mmaped_reg : process(clk, avs_control_address,avs_control_read) is
 	begin
 		if (reset = '1') then
 			avs_control_readdata <= x"00000000";
 			control_waitrq <= '1';			
 		elsif(rising_edge(clk)) then
-			control_waitrq <= '1';
+			control_waitrq <= '0';
 			if (avs_control_read = '1') then
 				control_waitrq <= '0';
 				if (avs_control_address = CONTROL_ADDR) then
