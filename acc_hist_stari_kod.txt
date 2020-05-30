@@ -239,7 +239,7 @@ DIFF_C_CLEAR: diff port map(
 			control_waitrq <= '1';			
 		elsif(rising_edge(clk)) then
 			control_waitrq <= '1';
-			if (control_strobe = '1') then
+			if (avs_control_read = '1') then
 				control_waitrq <= '0';
 				if (avs_control_address = CONTROL_ADDR) then
 					avs_control_readdata <= control_reg;
