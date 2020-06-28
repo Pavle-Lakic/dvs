@@ -17,11 +17,28 @@
 #include "sys/alt_cache.h"
 #include "includes.h"
 
-#define CONTROL_ADDRESS 32
-#define STATUS_ADDRESS  0
+#define STATUS_ADDRESS  0x00
+#define CONTROL_ADDRESS 0x01
+#define NOP_LOW_ADDRESS 0x02
+#define NOP_MIDDLE_ADDRESS 0x03
+#define NOP_HIGH_ADDRESS 0x04
+
 
 int main()
-{/*
+{
+	alt_u32  nop = 0;
+
+	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
+	alt_u32 mtl = 0, mbr = 511, ntl = 0, nbr = 511;
+
+	//Width and height of input picture - initialization
+	alt_u32  width = 0, height = 0;
+
+	alt_u32 nop_low = 0;
+	alt_u32 nop_middle = 0;
+	alt_u32 nop_high = 0;
+
+	/*
 	alt_u16 tx_done = 0;
 	alt_u16 rx_done = 0;
 
@@ -133,27 +150,66 @@ int main()
 							(alt_u16)256*sizeof(alt_u32),  // length of the buffer
 							0); // writes are not to a fixed location
 */
-	IOWR_32DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, 0x07FEEBEE);
+
+	printf("Enter x position of top left pixel:\n");
+	scanf("%lu", &mtl);
+
+	printf("Enter y position of top left pixel:\n");
+	scanf("%lu", &ntl);
+
+	printf("Enter x position of bottom right pixel:\n");
+	scanf("%lu", &mbr);
+
+	printf("Enter y position of bottom right pixel:\n");
+	scanf("%lu", &nbr);
+
+	//Ubaciti proveru za unos brojeva
+
+	width = mbr - mtl + 1;
+	height = nbr - ntl + 1;
+
+	nop = width * height;
+	printf("Number of pixels %i\n", nop);
+
+	nop_low = nop & 0x000000ff;
+	nop_middle = (nop & 0x0000ff00) >> 8;
+	nop_high = (nop & 0x00070000) >> 16;
+/*
+	printf("nop_low %i\n", nop_low);
+	printf("nop_middle %i\n", nop_middle);
+	printf("nop_high = %i\n", nop_high);
+*/
+	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, 0xef);
 
 	alt_u32 counter=0;
 
+	alt_u32 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
+
+	printf("control_reg %x\n", control_reg);
+
+	IOWR_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS, nop_low);
+
+	nop_low = IORD_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS );
+/*
 	while (counter < 100000) {counter++;}
 
 	counter = 0;
+*/
+	printf("nop_low %i\n", nop_low);
 
-	alt_u32 control_reg = IORD_32DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS);
+	IOWR_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS, nop_middle);
 
-	while (counter < 100000) {counter++;}
+	nop_middle = IORD_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS );
 
-	counter = 0;
+	printf("nop_middle %i\n", nop_middle);
 
-	printf("control_reg = %x\n", control_reg);
+	IOWR_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS, nop_high);
 
-	alt_u32 status_reg = IORD_32DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
+	nop_high = IORD_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS );
 
-	while (counter < 100000) {counter++;}
+	printf("nop_high = %i\n", nop_high);
 
-	counter = 0;
+	alt_u32 status_reg = IORD_8DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
 
 	printf("status_reg = %x\n", status_reg);
 /*

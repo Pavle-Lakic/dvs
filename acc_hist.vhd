@@ -16,11 +16,11 @@ entity acc_hist is
 	port (
 		clk                     : in  std_logic                     := '0';             --       clock.clk
 		reset                   : in  std_logic                     := '0';             --       reset.reset
-		avs_control_address     : in  std_logic                     := '0';             -- avs_control.address
+		avs_control_address     : in  std_logic_vector(2 downto 0)  := (others => '0'); -- avs_control.address
 		avs_control_read        : in  std_logic                     := '0';             --            .read
-		avs_control_readdata    : out std_logic_vector(31 downto 0);                    --            .readdata
+		avs_control_readdata    : out std_logic_vector(7 downto 0);                     --            .readdata
 		avs_control_write       : in  std_logic                     := '0';             --            .write
-		avs_control_writedata   : in  std_logic_vector(31 downto 0) := (others => '0'); --            .writedata
+		avs_control_writedata   : in  std_logic_vector(7 downto 0)  := (others => '0'); --            .writedata
 		avs_control_waitrequest : out std_logic;                                        --            .waitrequest
 		asi_in_data             : in  std_logic_vector(7 downto 0)  := (others => '0'); --      asi_in.data
 		asi_in_ready            : out std_logic;                                        --            .ready
@@ -54,7 +54,7 @@ end component;
 --	| c_run | c_res | reserved |
 --	|   7   |   6   |   5..0   |
 
-	signal control_reg : std_logic_vector(31 downto 0);
+	signal control_reg : std_logic_vector(7 downto 0) := x"00";
 	
 --	STATUS_REG
 -- Iz statusnog registra moze samo da se cita.
@@ -62,21 +62,32 @@ end component;
 --	| reserved | status_reg_state |
 --	|   7..3   |       2..0       |
 
-	signal status_reg : std_logic_vector (31 downto 0);
+	signal status_reg : std_logic_vector (7 downto 0) := x"00";
 	
 	-- oznacava da je statusni registar adresiran, i da je avs_control_write bit aktivan
 	signal control_strobe : std_logic;
 	
-	-- adresa kontrolnog registra
-	constant CONTROL_ADDR : std_logic := '1';
-	
 	-- adresa statusnog registra
-	constant STATUS_ADDR  : std_logic := '0';
+	constant STATUS_ADDR  		: std_logic_vector(2 downto 0) := "000";
+	
+	-- adresa kontrolnog registra
+	constant CONTROL_ADDR 		: std_logic_vector(2 downto 0) := "001";
+	
+	constant NOP_LOW_ADDR		: std_logic_vector(2 downto 0) := "010";
+	constant NOP_MIDDLE_ADDR		: std_logic_vector(2 downto 0) := "011";
+	constant NOP_HIGH_ADDR		: std_logic_vector(2 downto 0) := "100";
+	
+	signal nop_low	: std_logic_vector ( 7 downto 0) := x"00";
+	signal nop_middle : std_logic_vector (7 downto 0 ) := x"00";
+	signal nop_high : std_logic_vector ( 7 downto 0) := x"00";
+	signal nop_low_strobe : std_logic := '0';
+	signal nop_middle_strobe : std_logic := '0';
+	signal nop_high_strobe : std_logic := '0';
 
 	-- pomocni signal koji omogucava citanje iz registra, za avs_control_waitrequest
 	signal control_waitrq : std_logic;
 	
-	signal out_mux : std_logic_vector (31 downto 0);
+	signal out_mux : std_logic_vector (7 downto 0);
 
 	type state is (idle, 			-- cekanje softverskog starta, pre starta treba resetovati RAM							"000"
 					reset_ram,		-- resetovanje ram-a 																	"001"
@@ -152,9 +163,20 @@ begin
 
 	-- za upis u kontrolni registar
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
+	nop_low_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_LOW_ADDR) else '0';
+	nop_middle_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_MIDDLE_ADDR) else '0';
+	nop_high_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_HIGH_ADDR) else '0';
 	
 	out_mux <= control_reg when (avs_control_address = CONTROL_ADDR) else
-					status_reg when (avs_control_address = STATUS_ADDR);
+			nop_low when (avs_control_address = NOP_LOW_ADDR) else
+			nop_middle when (avs_control_address = NOP_MIDDLE_ADDR) else
+			nop_high when (avs_control_address = NOP_HIGH_ADDR) else
+			status_reg when (avs_control_address = STATUS_ADDR) else
+			x"AA";
+	
+	s_nop (18 downto 16) <= unsigned(nop_high(2 downto 0));
+	s_nop (15 downto 8)  <= unsigned(nop_middle);
+	s_nop (7 downto 0)	<= unsigned(nop_high);
 	
 	--c_run <= control_reg(7);
 	--c_res <= control_reg(6);
@@ -188,10 +210,22 @@ begin
 	begin
 		if (reset_global = '1') then
 			control_reg <= (others => '0');
+			nop_low <= (others => '0');
+			nop_middle <= (others => '0');
+			nop_high <= (others => '0');
 			--status_reg <= (others => '1');
 		elsif(rising_edge(clk)) then
-			if (avs_control_write = '1') then
+			if (control_strobe = '1') then
 				control_reg <= avs_control_writedata;
+			end if;	
+			if (nop_low_strobe = '1') then
+				nop_low <= avs_control_writedata;
+			end if;	
+			if (nop_middle_strobe = '1') then
+				nop_middle <= avs_control_writedata;
+			end if;	
+			if (nop_high_strobe = '1') then
+				nop_high <= avs_control_writedata;
 			end if;
 		end if;
 	end process;
