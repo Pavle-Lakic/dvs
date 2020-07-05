@@ -106,7 +106,7 @@ end component;
 	signal output_sample : std_logic_vector(15 downto 0);
 	
 	-- za sada se ne koristi, moze kasnije kao specificni ulazni podatak u RAM
-	signal data_ram	: std_logic_vector(15 downto 0);
+	signal data_ram	: std_logic_vector(15 downto 0) := x"0000";
 	
 	-- signal dozvole za upis u RAM, za sada se ne koristi
 	signal wren_ram : std_logic;
@@ -115,7 +115,7 @@ end component;
 	signal adrr_ready_ram : std_logic;
 	
 	-- postavlja se na aktivno stanje kada je ili softverski ili hardverski reset aktivan
-	signal reset_global : std_logic;
+	-- signal reset_global : std_logic;
 	
 	-- signal za postavljanje svih podataka u RAM-u na 0
 	signal c_clear : std_logic;
@@ -148,18 +148,30 @@ end component;
 	signal status_reg_state : std_logic_vector (2 downto 0);
 	
 	-- oznacava broj obradjenih piksela
-	signal s_nopp : natural range 0 to 262144;
+	signal s_nopp : natural range 0 to 262144 := 0;
 	
-	signal read_reg : std_logic_vector( 7 downto 0 );
+	signal read_reg : std_logic_vector ( 7 downto 0 );
 	
 	signal wait_signal : std_logic;
-	signal ram_address : integer range 0 to 255;
-	signal s_ready		: std_logic := '0';
+	signal address_ram : std_logic_vector (7 downto 0);
+	
+	signal ram_address : integer range 0 to 255 := 0;
+	-- signal s_ready		: std_logic := '0';
+	
 	-- signal koji oznacava broj piksela koji treba da se obradi
 	signal s_nop : unsigned (18 downto 0);	
-	signal c_cnt : std_logic_vector (1 downto 0);
 	
 begin
+
+	RAM_MEMORY:ram_8
+	port map
+	(
+		address =>	address_ram,
+		clock	=>	clk,
+		data	=>	data_ram,
+		wren	=>	wren_ram,
+		q		=>	q_ram
+	);
 
 	-- za upis u kontrolni registar
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
@@ -178,22 +190,19 @@ begin
 	s_nop (15 downto 8)  <= unsigned(nop_middle);
 	s_nop (7 downto 0)	<= unsigned(nop_high);
 	
-	--c_run <= control_reg(7);
-	--c_res <= control_reg(6);
+	c_run <= control_reg(7);
+	c_res <= control_reg(6);
 	
-	--c_cnt <= control_reg(1 downto 0);
+	status_reg(2 downto 0) <= status_reg_state;
 	
-	--status_reg(7) <= s_ready;
-	
-	-- softverski i hardverski reset zajedno
-	reset_global <= reset;
+	-- napisati procese za WREN, DATA i ADDRESS
 	
 	--za izlazni DMA
 	aso_out_data <= output_sample;
 	
-	read_regs: process(clk, reset_global)
+	read_regs: process(clk, reset)
 	begin
-		if (reset_global = '1') then
+		if (reset = '1' or c_res = '1') then
 			wait_signal <= '1';
 		elsif (rising_edge(clk)) then
 			avs_control_readdata <= (others => '0');
@@ -206,18 +215,14 @@ begin
 	end process;
 	
 	-- proces za upis u kontrolni registar
-	control_reg_process : process(clk, reset_global, avs_control_write) is 
+	write_reg_process : process(clk, reset, avs_control_write) is 
 	begin
-		if (reset_global = '1') then
-			control_reg <= (others => '0');
+		if (reset = '1' or c_res = '1') then
 			nop_low <= (others => '0');
 			nop_middle <= (others => '0');
 			nop_high <= (others => '0');
 			--status_reg <= (others => '1');
 		elsif(rising_edge(clk)) then
-			if (control_strobe = '1') then
-				control_reg <= avs_control_writedata;
-			end if;	
 			if (nop_low_strobe = '1') then
 				nop_low <= avs_control_writedata;
 			end if;	
@@ -228,6 +233,17 @@ begin
 				nop_high <= avs_control_writedata;
 			end if;
 		end if;
+	end process;
+	
+	write_control_reg : process(clk, reset, avs_control_write) is
+	begin
+		if (reset = '1') then
+			control_reg <= (others => '0');
+		elsif(rising_edge(clk)) then
+			if (control_strobe = '1') then
+				control_reg <= avs_control_writedata;
+			end if;
+		end if;	
 	end process;
 	
 	-- uzimanje znacajnih vrednosti iz kontrolnog registra
@@ -272,15 +288,128 @@ begin
 		-- end if;
 	-- end process;
 	
-	-- -- ideja je Moore-ova masina stanja da se napravi
-	-- control_fsm: process(clk)
-	-- begin
-		-- if (reset = '1') then
-			-- current_state <= idle;
-		-- elsif (rising_edge(clk)) then
-			-- current_state <= next_state;
-		-- end if;
-	-- end process;	
+	-- ideja je Moore-ova masina stanja da se napravi
+	control_fsm: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1') then
+			current_state <= idle;
+		elsif (rising_edge(clk)) then
+			current_state <= next_state;
+		end if;
+	end process;	
+	
+	-- menjanje brojaca
+	ram_address_counter_control: process(clk, reset, c_res)
+	begin 
+		if (reset = '1' or c_res = '1') then
+			ram_address <= 0;
+			-- s_nopp <= 0;
+		elsif (rising_edge(clk)) then
+			if (current_state = reset_ram or (current_state = output_read and aso_out_ready = '1')) then
+				ram_address <= ram_address + 1;
+			elsif (current_state = wait_input or current_state =  idle) then
+				ram_address <= 0;
+			-- elsif (current_state = process_state) then
+				-- s_nopp <= s_nopp + 1;
+			end if;
+		end if;
+	end process;
+	
+	ram_address_control: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1') then
+			address_ram <= x"00";
+		elsif (rising_edge(clk)) then
+			if (current_state = wait_input or current_state = process_state) then
+				address_ram <= asi_in_data;
+			else
+				address_ram <= std_logic_vector(to_unsigned(ram_address, 8));
+			end if;
+		end if;
+	end process;
+	
+	s_nopp_control: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1') then
+			s_nopp <= 0;
+		elsif(rising_edge(clk)) then
+			if (current_state = process_state) then
+				s_nopp <= s_nopp + 1;
+			end if;
+		end if;
+	end process;
+	
+	data_ram_control: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1') then
+			data_ram <= x"0000";
+		elsif(rising_edge(clk)) then
+			if (current_state = reset_ram) then
+				data_ram <= x"0000";
+			elsif (current_state = wait_input) then
+				data_ram <= std_logic_vector(to_unsigned((to_integer(unsigned(q_ram)) + 1), 16));
+			end if;	
+		end if;
+	end process;
+	
+	wren_control: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1') then
+			wren_ram <= '0';
+		elsif (rising_edge(clk)) then
+			if (current_state = process_state or current_state = reset_ram) then
+				wren_ram <= '1';
+			else
+				wren_ram <= '0';
+			end if;	
+		end if;
+	end process;
+	
+	-- nova logika masine stanja
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
+	begin
+		case current_state is
+			when idle =>		
+				if (c_run = '1') then
+					next_state <= reset_ram;
+				else
+					next_state <= idle;
+				end if;
+				
+			when reset_ram =>		
+				if (ram_address = 255) then	
+					next_state <= wait_input;
+				else
+					next_state <= reset_ram;
+				end if;
+				
+			when wait_input =>
+				if (s_nop = s_nopp) then
+					next_state <= wait_output;
+				elsif (asi_in_valid = '1') then
+					next_state <= process_state;
+				else
+					next_state <= wait_input;
+				end if;
+				
+			when process_state =>
+				next_state <= wait_input;
+								
+			when wait_output =>
+				if (ram_address = 255) then
+					next_state <= done;
+				elsif (aso_out_ready = '1') then
+					next_state <= output_read;
+				end if;
+				
+			when output_read =>
+				next_state <= wait_output;
+				
+			when done =>
+				next_state <= done;
+				
+		 end case;
+	 end process;
 	
 	-- logika masine stanja
 	-- streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, s_cnt, s_nopp, in_ready_ram, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
@@ -350,6 +479,49 @@ begin
 			-- end if;
 		-- end if;
 	-- end process;
+	
+	-- na osnovu stanja postavlja izlaze
+	output_process: process(current_state) is
+	begin
+		case(current_state) is			
+			when idle =>
+				status_reg_state <= "000";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+				
+			when reset_ram =>
+				status_reg_state <= "001";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+				
+			when wait_input =>
+				status_reg_state <= "010";
+				aso_out_valid <= '0';
+				asi_in_ready <= '1';
+			
+			when process_state =>	
+				status_reg_state <= "011";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+	
+			when wait_output =>				
+				status_reg_state <= "100";
+				aso_out_valid <= '1';
+				asi_in_ready <= '0';
+				
+			when output_read =>	
+				status_reg_state <= "101";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+			
+			when done =>
+				status_reg_state <= "110";
+				aso_out_valid <= '0';
+				asi_in_ready <= '0';
+				
+		end case;
+	end process;
+	
 	
 	-- -- na osnovu stanja postavlja izlaze
 	-- output_process: process(current_state) is

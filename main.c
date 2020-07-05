@@ -179,14 +179,6 @@ int main()
 	printf("nop_middle %i\n", nop_middle);
 	printf("nop_high = %i\n", nop_high);
 */
-	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, 0xef);
-
-	alt_u32 counter=0;
-
-	alt_u32 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
-
-	printf("control_reg %x\n", control_reg);
-
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS, nop_low);
 
 	nop_low = IORD_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS );
@@ -212,6 +204,14 @@ int main()
 	alt_u32 status_reg = IORD_8DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
 
 	printf("status_reg = %x\n", status_reg);
+
+	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, 0x40);
+
+	alt_u32 counter=0;
+
+	alt_u32 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
+
+	printf("control_reg %x\n", control_reg);
 /*
 	alt_u32 transmit_status = alt_avalon_sgdma_do_sync_transfer(sgdma_m2s, &m2s_desc[0]);
 
