@@ -148,7 +148,7 @@ end component;
 	signal status_reg_state : std_logic_vector (2 downto 0);
 	
 	-- oznacava broj obradjenih piksela
-	signal s_nopp : natural range 0 to 262144 := 0;
+	signal s_nopp : integer range 0 to 262144 := 0;
 	
 	signal read_reg : std_logic_vector ( 7 downto 0 );
 	
@@ -188,7 +188,7 @@ begin
 	
 	s_nop (18 downto 16) <= unsigned(nop_high(2 downto 0));
 	s_nop (15 downto 8)  <= unsigned(nop_middle);
-	s_nop (7 downto 0)	<= unsigned(nop_high);
+	s_nop (7 downto 0)	<= unsigned(nop_low);
 	
 	c_run <= control_reg(7);
 	c_res <= control_reg(6);
@@ -221,7 +221,6 @@ begin
 			nop_low <= (others => '0');
 			nop_middle <= (others => '0');
 			nop_high <= (others => '0');
-			--status_reg <= (others => '1');
 		elsif(rising_edge(clk)) then
 			if (nop_low_strobe = '1') then
 				nop_low <= avs_control_writedata;
@@ -305,7 +304,7 @@ begin
 			ram_address <= 0;
 			-- s_nopp <= 0;
 		elsif (rising_edge(clk)) then
-			if (current_state = reset_ram or (current_state = output_read and aso_out_ready = '1')) then
+			if (current_state = reset_ram or (current_state = output_read)) then
 				ram_address <= ram_address + 1;
 			elsif (current_state = wait_input or current_state =  idle) then
 				ram_address <= 0;
@@ -320,7 +319,7 @@ begin
 		if (reset = '1' or c_res = '1') then
 			address_ram <= x"00";
 		elsif (rising_edge(clk)) then
-			if (current_state = wait_input or current_state = process_state) then
+			if (current_state = process_state) then
 				address_ram <= asi_in_data;
 			else
 				address_ram <= std_logic_vector(to_unsigned(ram_address, 8));
@@ -346,7 +345,7 @@ begin
 		elsif(rising_edge(clk)) then
 			if (current_state = reset_ram) then
 				data_ram <= x"0000";
-			elsif (current_state = wait_input) then
+			elsif (current_state = process_state) then
 				data_ram <= std_logic_vector(to_unsigned((to_integer(unsigned(q_ram)) + 1), 16));
 			end if;	
 		end if;
@@ -384,7 +383,7 @@ begin
 				end if;
 				
 			when wait_input =>
-				if (s_nop = s_nopp) then
+				if (s_nop = to_unsigned(s_nopp, 19)) then
 					next_state <= wait_output;
 				elsif (asi_in_valid = '1') then
 					next_state <= process_state;
@@ -400,6 +399,8 @@ begin
 					next_state <= done;
 				elsif (aso_out_ready = '1') then
 					next_state <= output_read;
+				else
+					next_state <= wait_output;
 				end if;
 				
 			when output_read =>
