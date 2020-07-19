@@ -14,53 +14,54 @@ use IEEE.numeric_std.all;
 
 entity acc_hist is
 	port (
-		clk                     : in  std_logic                     := '0';             --       clock.clk
-		reset                   : in  std_logic                     := '0';             --       reset.reset
-		avs_control_address     : in  std_logic_vector(2 downto 0)  := (others => '0'); -- avs_control.address
-		avs_control_read        : in  std_logic                     := '0';             --            .read
-		avs_control_readdata    : out std_logic_vector(7 downto 0);                     --            .readdata
-		avs_control_write       : in  std_logic                     := '0';             --            .write
-		avs_control_writedata   : in  std_logic_vector(7 downto 0)  := (others => '0'); --            .writedata
-		avs_control_waitrequest : out std_logic;                                        --            .waitrequest
+		clk                     : in  std_logic                     := '0';             --      clock.clk
+		reset                   : in  std_logic                     := '0';             --      reset.reset
+		avs_control_address     : in  std_logic_vector(2 downto 0)  := (others => '0'); -- 		avs_control.address
+		avs_control_read        : in  std_logic                     := '0';             --      	.read
+		avs_control_readdata    : out std_logic_vector(7 downto 0);                     --      	.readdata
+		avs_control_write       : in  std_logic                     := '0';             --      	.write
+		avs_control_writedata   : in  std_logic_vector(7 downto 0)  := (others => '0'); --      	.writedata
+		avs_control_waitrequest : out std_logic;                                        --      	.waitrequest
 		asi_in_data             : in  std_logic_vector(7 downto 0)  := (others => '0'); --      asi_in.data
-		asi_in_ready            : out std_logic;                                        --            .ready
-		asi_in_valid            : in  std_logic                     := '0';             --            .valid
-		asi_in_eop              : in  std_logic                     := '0';             --            .endofpacket
-		asi_in_sop              : in  std_logic                     := '0';             --            .startofpacket
-		aso_out_data            : out std_logic_vector(15 downto 0);                    --     aso_out.data
-		aso_out_ready           : in  std_logic                     := '0';             --            .ready
-		aso_out_valid           : out std_logic;                                        --            .valid
-		aso_out_eop             : out std_logic;                                        --            .endofpacket
-		aso_out_sop             : out std_logic;                                        --            .startofpacket
-		aso_out_empty           : out std_logic                                         --            .empty
+		asi_in_ready            : out std_logic;                                        --      	.ready
+		asi_in_valid            : in  std_logic                     := '0';             --       	.valid
+		asi_in_eop              : in  std_logic                     := '0';             --      	.endofpacket
+		asi_in_sop              : in  std_logic                     := '0';             --     		.startofpacket
+		aso_out_data            : out std_logic_vector(15 downto 0);                    --     	aso_out.data
+		aso_out_ready           : in  std_logic                     := '0';             --         	.ready
+		aso_out_valid           : out std_logic;                                        --          .valid
+		aso_out_eop             : out std_logic;                                        --          .endofpacket
+		aso_out_sop             : out std_logic;                                        --          .startofpacket
+		aso_out_empty           : out std_logic                                         --          .empty
 	);
 end entity acc_hist;
 
 architecture rtl of acc_hist is
 
-component ram_8 is
-	PORT
-	(
-		address		: in STD_LOGIC_VECTOR (7 DOWNTO 0);
-		clock			: in STD_LOGIC;
-		data			: in STD_LOGIC_VECTOR (15 DOWNTO 0);
-		wren			: in STD_LOGIC ;
-		q				: out STD_LOGIC_VECTOR (15 DOWNTO 0)
-	);
-end component;
---	CONTROL_REG
--- Sa njim moze da se vrsi i upis i citanje.
---	____________________________
---	| c_run | c_res | reserved |
---	|   7   |   6   |   5..0   |
+	component ram_8 is
+		PORT
+		(
+			address			: in STD_LOGIC_VECTOR (7 DOWNTO 0);
+			clock			: in STD_LOGIC;
+			data			: in STD_LOGIC_VECTOR (15 DOWNTO 0);
+			wren			: in STD_LOGIC ;
+			q				: out STD_LOGIC_VECTOR (15 DOWNTO 0)
+		);
+	end component;
+
+	--	CONTROL_REG
+	-- Sa njim moze da se vrsi i upis i citanje.
+	--	____________________________
+	--	| c_run | c_res | reserved |
+	--	|   7   |   6   |   5..0   |
 
 	signal control_reg : std_logic_vector(7 downto 0) := x"00";
 	
---	STATUS_REG
--- Iz statusnog registra moze samo da se cita.
---	 ______________________________
---	| reserved | status_reg_state |
---	|   7..3   |       2..0       |
+	--	STATUS_REG
+	-- Iz statusnog registra moze samo da se cita.
+	--	 ______________________________
+	--	| reserved | status_reg_state |
+	--	|   7..3   |       2..0       |
 
 	signal status_reg : std_logic_vector (7 downto 0) := x"00";
 	
@@ -74,12 +75,13 @@ end component;
 	constant CONTROL_ADDR 		: std_logic_vector(2 downto 0) := "001";
 	
 	constant NOP_LOW_ADDR		: std_logic_vector(2 downto 0) := "010";
-	constant NOP_MIDDLE_ADDR		: std_logic_vector(2 downto 0) := "011";
+	constant NOP_MIDDLE_ADDR	: std_logic_vector(2 downto 0) := "011";
 	constant NOP_HIGH_ADDR		: std_logic_vector(2 downto 0) := "100";
 	
 	signal nop_low	: std_logic_vector ( 7 downto 0) := x"00";
 	signal nop_middle : std_logic_vector (7 downto 0 ) := x"00";
 	signal nop_high : std_logic_vector ( 7 downto 0) := x"00";
+	
 	signal nop_low_strobe : std_logic := '0';
 	signal nop_middle_strobe : std_logic := '0';
 	signal nop_high_strobe : std_logic := '0';
@@ -93,8 +95,9 @@ end component;
 					reset_ram,		-- resetovanje ram-a 																	"001"
 					wait_input,		-- nakon starta, cekanje da RAM bude spreman da primi podatak, i ulaz validan			"010"
 					process_state, 	-- medjustanje 																			"011"
-					wait_output,		-- cekanje da izlazni DMA bude spreman da procita podatak							"100"
-					output_read,		-- upis u izlazni DMA																"101"
+					wait_state,
+					wait_output,	-- cekanje da izlazni DMA bude spreman da procita podatak								"100"
+					output_read,	-- upis u izlazni DMA																	"101"
 					done); 			-- stanje da je sve zavrseno, iz njega moze nazad samo soft ili hard resetom			"110"
 
 	signal current_state, next_state : state;
@@ -113,9 +116,6 @@ end component;
 	
 	-- signal da je spreman podatak na nekoj adresi da se procita iz RAM, za stanje output_read sluzi
 	signal adrr_ready_ram : std_logic;
-	
-	-- postavlja se na aktivno stanje kada je ili softverski ili hardverski reset aktivan
-	-- signal reset_global : std_logic;
 	
 	-- signal za postavljanje svih podataka u RAM-u na 0
 	signal c_clear : std_logic;
@@ -138,12 +138,6 @@ end component;
 	-- softverski reset
 	signal c_res : std_logic;
 	
-	-- diferenciran c_run
-	signal c_run_diff : std_logic;
-	
-	-- diferenciran c_clear
-	signal c_clear_diff : std_logic;
-	
 	-- prva 3 bita statusnog registra, oznacavaju stanje
 	signal status_reg_state : std_logic_vector (2 downto 0);
 	
@@ -156,10 +150,11 @@ end component;
 	signal address_ram : std_logic_vector (7 downto 0);
 	
 	signal ram_address : integer range 0 to 255 := 0;
-	-- signal s_ready		: std_logic := '0';
 	
 	-- signal koji oznacava broj piksela koji treba da se obradi
 	signal s_nop : unsigned (18 downto 0);	
+	signal int_asi_in_ready : std_logic;
+	signal small_cnt : integer range 0 to 2 := 0;
 	
 begin
 
@@ -195,10 +190,8 @@ begin
 	
 	status_reg(2 downto 0) <= status_reg_state;
 	
-	-- napisati procese za WREN, DATA i ADDRESS
-	
 	--za izlazni DMA
-	aso_out_data <= output_sample;
+	aso_out_data <= q_ram;
 	
 	read_regs: process(clk, reset)
 	begin
@@ -245,48 +238,6 @@ begin
 		end if;	
 	end process;
 	
-	-- uzimanje znacajnih vrednosti iz kontrolnog registra
---	c_bits_write : process(clk) is 
---	begin
---		if (reset = '1') then
---			c_res <= '0';
---			c_clear <= '0';
---			c_nop <= (others => '0');
---		elsif (rising_edge(clk)) then
---			c_run <= control_reg(31);
---			c_res <= control_reg(30);
---			c_clear <= control_reg(29);
---			c_nop <= unsigned(control_reg(18 downto 0));
---		end if;
---	end process;
-
-	-- citanje iz controlnog i statusnog registra, ako kontrolni nije adresiran, uvek je statusni
-	-- proces za ispis izlaza RAM-a u output sample, a samim tim i u aso_out_data
-	-- process_sample : process(clk, current_state, aso_out_ready)
-	-- begin
-		-- if (reset = '1') then
-			-- output_sample <= x"BEEF";
-		-- elsif (rising_edge(clk)) then
-			-- if ((current_state = output_read) and aso_out_ready = '1') then
-				-- output_sample (15 downto 0) <= q_ram;
-			-- end if;
-		-- end if;
-	-- end process;
-	
-	-- -- citanje podatka iz asi_in_data kada je RAM spreman da primi nove podatke i kada je ulaz validan
-	-- read_sample : process(clk, s_cnt, current_state)
-	-- begin
-		-- if (reset = '1') then
-			-- input_sample <= x"00";
-		-- elsif (rising_edge(clk)) then
-			-- if (current_state = wait_output) then
-				-- input_sample <= std_logic_vector(to_unsigned(s_cnt, 8));
-			-- elsif (in_ready_ram = '1' and asi_in_valid = '1') then
-				-- input_sample <= asi_in_data;
-			-- end if;
-		-- end if;
-	-- end process;
-	
 	-- ideja je Moore-ova masina stanja da se napravi
 	control_fsm: process(clk, reset, c_res)
 	begin
@@ -302,14 +253,11 @@ begin
 	begin 
 		if (reset = '1' or c_res = '1') then
 			ram_address <= 0;
-			-- s_nopp <= 0;
 		elsif (rising_edge(clk)) then
 			if (current_state = reset_ram or (current_state = output_read)) then
 				ram_address <= ram_address + 1;
 			elsif (current_state = wait_input or current_state =  idle) then
 				ram_address <= 0;
-			-- elsif (current_state = process_state) then
-				-- s_nopp <= s_nopp + 1;
 			end if;
 		end if;
 	end process;
@@ -319,8 +267,10 @@ begin
 		if (reset = '1' or c_res = '1') then
 			address_ram <= x"00";
 		elsif (rising_edge(clk)) then
-			if (current_state = process_state) then
+			if ((current_state = process_state or current_state = wait_input  or current_state = wait_state) and (s_nop > to_unsigned(s_nopp, 19))) then
 				address_ram <= asi_in_data;
+			elsif (current_state = done) then
+				address_ram <= x"E0";
 			else
 				address_ram <= std_logic_vector(to_unsigned(ram_address, 8));
 			end if;
@@ -331,10 +281,13 @@ begin
 	begin
 		if (reset = '1' or c_res = '1') then
 			s_nopp <= 0;
+			small_cnt <= 0;
 		elsif(rising_edge(clk)) then
 			if (current_state = process_state) then
 				s_nopp <= s_nopp + 1;
-			end if;
+			elsif (current_state = wait_state) then
+				small_cnt <= small_cnt + 1;
+			end if;	
 		end if;
 	end process;
 	
@@ -346,8 +299,8 @@ begin
 			if (current_state = reset_ram) then
 				data_ram <= x"0000";
 			elsif (current_state = process_state) then
-				data_ram <= std_logic_vector(to_unsigned((to_integer(unsigned(q_ram)) + 1), 16));
-			end if;	
+				data_ram <= std_logic_vector(to_unsigned((to_integer(unsigned(q_ram)) + 1), 16));	
+			end if;
 		end if;
 	end process;
 	
@@ -356,13 +309,15 @@ begin
 		if (reset = '1' or c_res = '1') then
 			wren_ram <= '0';
 		elsif (rising_edge(clk)) then
-			if (current_state = process_state or current_state = reset_ram) then
+			if (current_state = reset_ram or current_state = process_state) then
 				wren_ram <= '1';
 			else
 				wren_ram <= '0';
 			end if;	
 		end if;
 	end process;
+	
+	asi_in_ready <= int_asi_in_ready;
 	
 	-- nova logika masine stanja
 	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
@@ -375,7 +330,7 @@ begin
 					next_state <= idle;
 				end if;
 				
-			when reset_ram =>		
+			when reset_ram =>
 				if (ram_address = 255) then	
 					next_state <= wait_input;
 				else
@@ -386,13 +341,27 @@ begin
 				if (s_nop = to_unsigned(s_nopp, 19)) then
 					next_state <= wait_output;
 				elsif (asi_in_valid = '1') then
-					next_state <= process_state;
+					next_state <= wait_state;
 				else
 					next_state <= wait_input;
 				end if;
+			
+			when wait_state =>
+				if (s_nop = to_unsigned(s_nopp - 1, 19)) then
+					next_state <= wait_output;
+				elsif (small_cnt = 2) then
+					next_state <= process_state;
+				else
+					next_state <= wait_state;
+				end if;	
 				
-			when process_state =>
-				next_state <= wait_input;
+			when process_state =>	
+				if (s_nop = to_unsigned(s_nopp - 1, 19)) then
+					next_state <= wait_output;
+				else
+					next_state <= wait_input;
+				end if;	
+	
 								
 			when wait_output =>
 				if (ram_address = 255) then
@@ -412,75 +381,6 @@ begin
 		 end case;
 	 end process;
 	
-	-- logika masine stanja
-	-- streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, s_cnt, s_nopp, in_ready_ram, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
-	-- begin
-		-- case current_state is
-			-- when idle =>		
-				-- if (c_run = '1') then	
-					-- next_state <= wait_input;
-				-- else
-					-- next_state <= idle;
-				-- end if;
-
-			-- when wait_input =>
-				-- if (s_nopp = c_nop) then
-					-- next_state <= wait_output;
-				-- elsif (asi_in_valid = '1' and in_ready_ram = '1') then
-					-- next_state <= process_state;
-				-- else
-					-- next_state <= wait_input;
-				-- end if;
-				
-			-- when process_state =>
-				-- next_state <= wait_input;
-								
-			-- when wait_output =>
-				-- if (s_cnt = 255) then
-					-- next_state <= done;
-				-- elsif (aso_out_ready = '1' and in_ready_ram = '1') then
-					-- next_state <= output_read;
-				-- end if;
-				
-			 -- when output_read =>
-				 -- next_state <= wait_output;
-				
-			 -- when done =>
-				 -- next_state <= done;
-				
-		 -- end case;
-	 -- end process;	
-	
-	-- -- proces koji na osnovu stanja i countera update-uje statusni registar
-	-- status_reg_control: process(clk) is
-	-- begin
-		-- if (reset = '1') then
-			-- status_reg <= (others => '0');
-		-- elsif (rising_edge(clk)) then
-			-- status_reg(31 downto 29) <= status_reg_state;
-			-- status_reg(27 downto 9) <= std_logic_vector(to_unsigned(s_nopp, 19));
-			-- status_reg(8 downto 0) <= std_logic_vector(to_unsigned(s_cnt, 9));		
-		-- end if;
-	-- end process;
-	
-	-- -- proces koji broji counter-e, sinhroni mora da bude
-	-- counter_process: process(clk, reset, status_reg_state, c_res) is
-	-- begin
-		-- if (reset = '1') then
-			-- s_nopp <= 0;
-			-- s_cnt <= 0;
-		-- elsif (rising_edge(clk)) then
-			-- if (status_reg_state = "000") then
-				-- s_nopp <= 0;
-				-- s_cnt <= 0;
-			-- elsif (status_reg_state = "010") then
-				-- s_nopp <= s_nopp + 1;
-			-- elsif(status_reg_state = "100") then
-				-- s_cnt <= s_cnt + 1;		
-			-- end if;
-		-- end if;
-	-- end process;
-	
 	-- na osnovu stanja postavlja izlaze
 	output_process: process(current_state) is
 	begin
@@ -488,94 +388,50 @@ begin
 			when idle =>
 				status_reg_state <= "000";
 				aso_out_valid <= '0';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 				
 			when reset_ram =>
 				status_reg_state <= "001";
 				aso_out_valid <= '0';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 				
 			when wait_input =>
 				status_reg_state <= "010";
 				aso_out_valid <= '0';
-				asi_in_ready <= '1';
+				int_asi_in_ready <= '1';
+				
+			when wait_state =>	
+				status_reg_state <= "111";
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';	
 			
 			when process_state =>	
 				status_reg_state <= "011";
 				aso_out_valid <= '0';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 	
 			when wait_output =>				
 				status_reg_state <= "100";
 				aso_out_valid <= '1';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 				
 			when output_read =>	
 				status_reg_state <= "101";
 				aso_out_valid <= '0';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 			
 			when done =>
 				status_reg_state <= "110";
 				aso_out_valid <= '0';
-				asi_in_ready <= '0';
+				int_asi_in_ready <= '0';
 				
 		end case;
 	end process;
 	
-	
-	-- -- na osnovu stanja postavlja izlaze
-	-- output_process: process(current_state) is
-	-- begin
-		-- case(current_state) is			
-			-- when idle =>
-				-- status_reg_state <= "000";
-				-- aso_out_valid <= '0';
-				-- asi_in_ready <= '0';
-				-- adrr_ready_ram <= '0';
-				-- inc_ram <= '0';
-				
-			-- when wait_input =>
-				-- status_reg_state <= "001";
-				-- aso_out_valid <= '0';
-				-- asi_in_ready <= in_ready_ram;
-				-- adrr_ready_ram <= '0';
-				-- inc_ram <= '0';
-			
-			-- when process_state =>	
-				-- status_reg_state <= "010";
-				-- aso_out_valid <= '0';
-				-- asi_in_ready <= in_ready_ram;
-				-- adrr_ready_ram <= '0';
-				-- inc_ram <= '1';
-	
-			-- when wait_output =>				
-				-- status_reg_state <= "011";
-				-- aso_out_valid <= out_valid_ram;
-				-- asi_in_ready <= '0';
-				-- adrr_ready_ram <= '0';
-				-- inc_ram <= '0';
-				
-			-- when output_read =>	
-				-- status_reg_state <= "100";
-				-- aso_out_valid <= out_valid_ram;
-				-- asi_in_ready <= '0';
-				-- adrr_ready_ram <= '1';
-				-- inc_ram <= '0';
-			
-			-- when done =>
-				-- status_reg_state <= "101";
-				-- aso_out_valid <= '0';
-				-- asi_in_ready <= '0';
-				-- adrr_ready_ram <= '0';
-				-- inc_ram <= '0';
-				
-		-- end case;
-	-- end process;
-	
 	aso_out_eop <= '0';
 	aso_out_sop <= '0';
 	aso_out_empty<= '0';
+	
 	-- da bi moglo da se cita iz registra
 	avs_control_waitrequest <= avs_control_read and wait_signal;
 

@@ -15,7 +15,6 @@
 #include "altera_avalon_sgdma_regs.h"
 #include "altera_avalon_performance_counter.h"
 #include "sys/alt_cache.h"
-#include "includes.h"
 
 #define STATUS_ADDRESS  0x00
 #define CONTROL_ADDRESS 0x01
@@ -279,7 +278,11 @@ int main()
 
 	printf("status_reg = %x\n", status_reg);
 
-	alt_u32 transmit_status = alt_avalon_sgdma_do_sync_transfer(sgdma_m2s, &m2s_desc[0]);
+	alt_u32 transmit_status = alt_avalon_sgdma_do_async_transfer(sgdma_m2s, &m2s_desc[0]);
+
+	while(tx_done < 1) {}
+
+	printf("Tx done\n");
 /*
 	while(tx_done < 1)
 	{
@@ -304,14 +307,14 @@ int main()
 		}
 	}
 */
-	alt_u32 receive_status = alt_avalon_sgdma_do_sync_transfer(sgdma_s2m, &s2m_desc[0]);
+	alt_u32 receive_status = alt_avalon_sgdma_do_async_transfer(sgdma_s2m, &s2m_desc[0]);
 
 	/**************************************************************
 	* Blocking until the SGDMA interrupts fire                 *
 	************************************************************/
-	while(tx_done < 1) {}
 
 	while(rx_done < 1) {}
+	printf("Rx done\n");
 
 	tx_done = 0;
 	rx_done = 0;
