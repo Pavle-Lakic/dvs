@@ -153,8 +153,10 @@ architecture rtl of acc_hist is
 	
 	-- signal koji oznacava broj piksela koji treba da se obradi
 	signal s_nop : unsigned (18 downto 0);	
-	signal int_asi_in_ready : std_logic;
 	signal small_cnt : integer range 0 to 2 := 0;
+	signal int_asi_in_ready : std_logic := '0';
+	signal int_asi_in_data : std_logic_vector ( 7 downto 0) := (others => '0');
+	
 	
 begin
 
@@ -192,6 +194,15 @@ begin
 	
 	--za izlazni DMA
 	aso_out_data <= q_ram;
+	
+	-- int_asi_data : process(clk, reset)
+	-- begin
+		-- if (reset = '1') then
+			-- int_asi_in_data <= (others => '0');
+		-- elsif (rising_edge(clk)) then
+			-- int_asi_data <= asi_in_data;
+		-- end if;	
+	-- end process;
 	
 	read_regs: process(clk, reset)
 	begin
@@ -254,23 +265,21 @@ begin
 		if (reset = '1' or c_res = '1') then
 			ram_address <= 0;
 		elsif (rising_edge(clk)) then
-			if (current_state = reset_ram or (current_state = output_read)) then
+			if (current_state = reset_ram or (current_state = wait_output and aso_out_ready = '1' )) then
 				ram_address <= ram_address + 1;
-			elsif (current_state = wait_input or current_state =  idle) then
+			elsif (current_state = process_state or current_state = wait_input or current_state =  idle) then
 				ram_address <= 0;
 			end if;
 		end if;
 	end process;
 	
-	ram_address_control: process(clk, reset, c_res)
+	ram_address_control: process(clk, reset, c_res, asi_in_data)
 	begin
 		if (reset = '1' or c_res = '1') then
 			address_ram <= x"00";
 		elsif (rising_edge(clk)) then
-			if ((current_state = process_state or current_state = wait_input  or current_state = wait_state) and (s_nop > to_unsigned(s_nopp, 19))) then
+			if (current_state = process_state or current_state = wait_state or current_state = wait_input) then
 				address_ram <= asi_in_data;
-			elsif (current_state = done) then
-				address_ram <= x"E0";
 			else
 				address_ram <= std_logic_vector(to_unsigned(ram_address, 8));
 			end if;
@@ -285,7 +294,8 @@ begin
 		elsif(rising_edge(clk)) then
 			if (current_state = process_state) then
 				s_nopp <= s_nopp + 1;
-			elsif (current_state = wait_state) then
+				small_cnt <= 0;
+			elsif (current_state = wait_state or current_state = output_read) then
 				small_cnt <= small_cnt + 1;
 			end if;	
 		end if;
@@ -331,12 +341,12 @@ begin
 				end if;
 				
 			when reset_ram =>
-				if (ram_address = 255) then	
-					next_state <= wait_input;
+				if (ram_address = 255 and asi_in_valid = '1') then	
+					next_state <= wait_state;
 				else
 					next_state <= reset_ram;
 				end if;
-				
+		
 			when wait_input =>
 				if (s_nop = to_unsigned(s_nopp, 19)) then
 					next_state <= wait_output;
@@ -347,24 +357,17 @@ begin
 				end if;
 			
 			when wait_state =>
-				if (s_nop = to_unsigned(s_nopp - 1, 19)) then
-					next_state <= wait_output;
-				elsif (small_cnt = 2) then
+				if (small_cnt = 2) then
 					next_state <= process_state;
 				else
 					next_state <= wait_state;
 				end if;	
 				
 			when process_state =>	
-				if (s_nop = to_unsigned(s_nopp - 1, 19)) then
-					next_state <= wait_output;
-				else
 					next_state <= wait_input;
-				end if;	
-	
-								
+
 			when wait_output =>
-				if (ram_address = 255) then
+				if (ram_address = 255 and aso_out_ready = '1') then
 					next_state <= done;
 				elsif (aso_out_ready = '1') then
 					next_state <= output_read;
@@ -373,8 +376,12 @@ begin
 				end if;
 				
 			when output_read =>
-				next_state <= wait_output;
-				
+					if (small_cnt = 2) then
+						next_state <= wait_output;
+					else
+						next_state <= output_read;
+					end if;	
+
 			when done =>
 				next_state <= done;
 				
@@ -417,14 +424,13 @@ begin
 				
 			when output_read =>	
 				status_reg_state <= "101";
-				aso_out_valid <= '0';
+				aso_out_valid <='0';
 				int_asi_in_ready <= '0';
 			
 			when done =>
 				status_reg_state <= "110";
 				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
-				
+				int_asi_in_ready <= '0';	
 		end case;
 	end process;
 	

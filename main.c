@@ -25,6 +25,10 @@
 volatile alt_u8 tx_done = 0;
 volatile alt_u8 rx_done = 0;
 
+
+//Pointers to file, all pixels of input image and all pixels of output image
+alt_u8 *input_image;
+
 void transmit_callback_function(void * context)
 {
 	tx_done = 1;
@@ -44,6 +48,8 @@ int main()
 {
 	alt_u32  nop = 0;
 
+	alt_u32 i = 0, j = 0;
+
 	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
 	alt_u32 mtl = 0, mbr = 511, ntl = 0, nbr = 511;
 
@@ -57,8 +63,6 @@ int main()
 
 //	alt_u16 tx_done = 0;
 //	alt_u16 rx_done = 0;
-
-	alt_u32 i=0, j=0;
 
 	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
 	printf("Enter x position of top left pixel:\n");
@@ -77,10 +81,8 @@ int main()
 	alt_u32 P =0, Q = 0;
 
 	//Histogram initialization
-	alt_u32 hist[256]={0};
+	alt_u16 hist[256]={0};
 
-	//Pointers to file, all pixels of input image and all pixels of output image
-	alt_u8 *input_image;
 
 	FILE* fp;
 
@@ -181,9 +183,8 @@ int main()
 							&s2m_desc[0],  // current descriptor pointer
 							&s2m_desc[1], // next descriptor pointer
 							(alt_u32*)hist,  // write buffer location
-							(alt_u16)256*sizeof(alt_u32),  // length of the buffer
+							(alt_u16)256*sizeof(alt_16),  // length of the buffer
 							0); // writes are not to a fixed location
-
 
 	/**************************************************************
 	* Register the ISRs that will get called when each (full)  *
