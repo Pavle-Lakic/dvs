@@ -94,11 +94,11 @@ architecture rtl of acc_hist is
 	type state is (idle, 			-- cekanje softverskog starta, pre starta treba resetovati RAM							"000"
 					reset_ram,		-- resetovanje ram-a 																	"001"
 					wait_input,		-- nakon starta, cekanje da RAM bude spreman da primi podatak, i ulaz validan			"010"
-					process_state, 	-- medjustanje 																			"011"
-					wait_state,
-					wait_output,	-- cekanje da izlazni DMA bude spreman da procita podatak								"100"
-					output_read,	-- upis u izlazni DMA																	"101"
-					done); 			-- stanje da je sve zavrseno, iz njega moze nazad samo soft ili hard resetom			"110"
+					wait_state,		-- pomocno stanje da se saceka validan izlaz na ram-u									"011"
+					process_state,	-- stanje gde su svi izlazi na ramu validni												"100"
+					wait_output,	-- cekanje da izlazni DMA bude spreman da procita podatak								"101"
+					output_read,	-- upis u izlazni DMA																	"110"
+					done); 			-- stanje da je sve zavrseno, iz njega moze nazad samo soft ili hard resetom			"111"
 
 	signal current_state, next_state : state;
 
@@ -194,16 +194,7 @@ begin
 	
 	--za izlazni DMA
 	aso_out_data <= q_ram;
-	
-	-- int_asi_data : process(clk, reset)
-	-- begin
-		-- if (reset = '1') then
-			-- int_asi_in_data <= (others => '0');
-		-- elsif (rising_edge(clk)) then
-			-- int_asi_data <= asi_in_data;
-		-- end if;	
-	-- end process;
-	
+
 	read_regs: process(clk, reset)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -376,11 +367,11 @@ begin
 				end if;
 				
 			when output_read =>
-					if (small_cnt = 2) then
-						next_state <= wait_output;
-					else
-						next_state <= output_read;
-					end if;	
+				if (small_cnt = 2) then
+					next_state <= wait_output;
+				else
+					next_state <= output_read;
+				end if;	
 
 			when done =>
 				next_state <= done;
@@ -408,27 +399,27 @@ begin
 				int_asi_in_ready <= '1';
 				
 			when wait_state =>	
-				status_reg_state <= "111";
+				status_reg_state <= "011";
 				aso_out_valid <= '0';
 				int_asi_in_ready <= '0';	
 			
 			when process_state =>	
-				status_reg_state <= "011";
+				status_reg_state <= "100";
 				aso_out_valid <= '0';
 				int_asi_in_ready <= '0';
 	
 			when wait_output =>				
-				status_reg_state <= "100";
+				status_reg_state <= "101";
 				aso_out_valid <= '1';
 				int_asi_in_ready <= '0';
 				
 			when output_read =>	
-				status_reg_state <= "101";
+				status_reg_state <= "110";
 				aso_out_valid <='0';
 				int_asi_in_ready <= '0';
 			
 			when done =>
-				status_reg_state <= "110";
+				status_reg_state <= "111";
 				aso_out_valid <= '0';
 				int_asi_in_ready <= '0';	
 		end case;

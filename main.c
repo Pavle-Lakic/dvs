@@ -32,15 +32,11 @@ alt_u8 *input_image;
 void transmit_callback_function(void * context)
 {
 	tx_done = 1;
-	//alt_u16 *tx_done = (alt_u16*) context;
-	//(*tx_done)++;  // main will be polling for this value being 1
 }
 
 void receive_callback_function(void * context)
 {
 	rx_done = 1;
-	//alt_u16 *rx_done = (alt_u16*) context;
-	//(*rx_done)++;  // main will be polling for this value being 1
 }
 
 
@@ -59,10 +55,6 @@ int main()
 	alt_u32 nop_low = 0;
 	alt_u32 nop_middle = 0;
 	alt_u32 nop_high = 0;
-	alt_u32 status_reg = 0;
-
-//	alt_u16 tx_done = 0;
-//	alt_u16 rx_done = 0;
 
 	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
 	printf("Enter x position of top left pixel:\n");
@@ -82,7 +74,6 @@ int main()
 
 	//Histogram initialization
 	alt_u16 hist[256]={0};
-
 
 	FILE* fp;
 
@@ -209,7 +200,6 @@ int main()
 
 	/**************************************************************/
 
-
 	//Ubaciti proveru za unos brojeva
 	nop = P * Q;
 	printf("Number of pixels %i\n", nop);
@@ -217,102 +207,33 @@ int main()
 	nop_low = nop & 0x000000ff;
 	nop_middle = (nop & 0x0000ff00) >> 8;
 	nop_high = (nop & 0x00070000) >> 16;
-/*
-	printf("nop_low %i\n", nop_low);
-	printf("nop_middle %i\n", nop_middle);
-	printf("nop_high = %i\n", nop_high);
-*/
+
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS, nop_low);
-
 	nop_low = IORD_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS );
-/*
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-*/
-	alt_u32 counter=0;
-
 	printf("nop_low = %d\n", nop_low);
 
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS, nop_middle);
-
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-
 	nop_middle = IORD_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS );
-
 	printf("nop_middle = %d\n", nop_middle);
 
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS, nop_high);
-
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-
 	nop_high = IORD_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS );
-
 	printf("nop_high = %d\n", nop_high);
 
-
-
-
+//TODO ubaciti performance counter odavde
 	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, 0x8F);
-
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-
-	alt_u32 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
-
+	alt_u8 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
 	printf("control_reg = %x\n", control_reg);
 
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-
-	while (counter < 100000) {counter++;}
-
-	counter = 0;
-
-	status_reg = IORD_8DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
-
+	alt_u8 status_reg = IORD_8DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
 	printf("status_reg = %x\n", status_reg);
 
 	alt_u32 transmit_status = alt_avalon_sgdma_do_async_transfer(sgdma_m2s, &m2s_desc[0]);
 
 	while(tx_done < 1) {}
-
 	printf("Tx done\n");
-/*
-	while(tx_done < 1)
-	{
-		if(transmit_status & ALTERA_AVALON_SGDMA_STATUS_CHAIN_COMPLETED_MSK)
-		{
-			tx_done = 1;
-			printf("The transmit SGDMA has completed!\n");
-		}
-	}
 
-	printf("Start receive!\n");
-
-	alt_u32 receive_status = alt_avalon_sgdma_do_sync_transfer(sgdma_s2m, &s2m_desc[0]);
-
-
-	while(rx_done < 1)
-	{
-		if(receive_status & ALTERA_AVALON_SGDMA_STATUS_CHAIN_COMPLETED_MSK)
-		{
-			rx_done = 1;
-			printf("The receive SGDMA has completed!\n");
-		}
-	}
-*/
 	alt_u32 receive_status = alt_avalon_sgdma_do_async_transfer(sgdma_s2m, &s2m_desc[0]);
-
-	/**************************************************************
-	* Blocking until the SGDMA interrupts fire                 *
-	************************************************************/
 
 	while(rx_done < 1) {}
 	printf("Rx done\n");
@@ -326,7 +247,7 @@ int main()
 	************************************************************/
 	alt_avalon_sgdma_stop(sgdma_m2s);
 	alt_avalon_sgdma_stop(sgdma_s2m);
-
+//TODO dovde
 	for (i = 0; i < 256; i++)
 		printf("hist[%d] = %d\n",i , hist[i]);
 
@@ -336,7 +257,6 @@ int main()
 	free(m2s_desc_copy);
 	free(s2m_desc_copy);
 	/**************************************************************/
-
 
 	printf("Exiting...");
 	return 0;
