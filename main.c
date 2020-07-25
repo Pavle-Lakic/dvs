@@ -47,7 +47,7 @@ int main()
 	alt_u32 i = 0, j = 0;
 
 	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
-	alt_u32 mtl = 0, mbr = 511, ntl = 0, nbr = 511;
+	alt_u32 mtl = 0, mbr = 1, ntl = 0, nbr = 1;
 
 	//Width and height of input picture - initialization
 	alt_u32  width = 0, height = 0;
@@ -79,7 +79,7 @@ int main()
 
 	// Instead of bright64.bin available binary files are:
 	  //bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
-	fp = fopen("/mnt/host/bright512.bin", "rb");
+	fp = fopen("/mnt/host/dark512.bin", "rb");
 
 	// First 4 bytes represents the width of a picture
 	fread(&width, 4, 1, fp);

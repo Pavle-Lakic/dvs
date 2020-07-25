@@ -264,14 +264,14 @@ begin
 		end if;
 	end process;
 	
-	ram_address_control: process(clk, reset, c_res, asi_in_data)
+	ram_address_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
 			address_ram <= x"00";
 		elsif (rising_edge(clk)) then
-			if (current_state = process_state or current_state = wait_state or current_state = wait_input) then
+			if (current_state = wait_input) then
 				address_ram <= asi_in_data;
-			else
+			elsif (current_state = reset_ram or current_state = wait_output or current_state = output_read) then
 				address_ram <= std_logic_vector(to_unsigned(ram_address, 8));
 			end if;
 		end if;
@@ -332,8 +332,8 @@ begin
 				end if;
 				
 			when reset_ram =>
-				if (ram_address = 255 and asi_in_valid = '1') then	
-					next_state <= wait_state;
+				if (address_ram = x"ff") then	
+					next_state <= wait_input;
 				else
 					next_state <= reset_ram;
 				end if;
