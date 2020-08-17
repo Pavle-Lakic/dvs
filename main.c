@@ -102,7 +102,7 @@ int main()
 
 	// Instead of bright64.bin available binary files are:
 	  //bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
-	fp = fopen("/mnt/host/bright512.bin", "rb");
+	fp = fopen("/mnt/host/dark64.bin", "rb");
 
 	// First 4 bytes represents the width of a picture
 	fread(&width, 4, 1, fp);
@@ -251,7 +251,6 @@ int main()
 	nop_high = IORD_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS );
 	printf("nop_high = %x\n", nop_high);
 
-//TODO ubaciti performance counter odavde
 	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, RUN);
 	alt_u8 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
 	printf("control_reg = %x\n", control_reg);
@@ -284,13 +283,6 @@ int main()
 	free(s2m_desc_copy);
 	/**************************************************************/
 
-//TODO dovde
-
-/*
-	for (i = 0; i < 256; i++)
-		printf("hist[%d] = %d\n",i , hist[i]);
-*/
-
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, NOP_LOW_ADDRESS, nop_low);
 	nop_low = IORD_8DIRECT(CONTRAST_ACC_BASE, NOP_LOW_ADDRESS );
 	printf("contrast_nop_low = %x\n", nop_low);
@@ -308,15 +300,6 @@ int main()
 	printf("contrast_control_reg = %x\n", contrast_control_reg);
 
 	alt_u32 cumhist_temp[256] = {0};
-/*
-	fp = fopen("/mnt/host/dark64_output.bin", "wb"); OVDE RADI
-
-	fwrite(&width, 1, 4, fp);
-	fwrite(&height, 1, 4, fp);
-	fwrite(input_image, 1, width*height, fp);
-	printf("OUTPUT IMAGE WRITTEN!\n");
-	fclose(fp);
-*/
 	cumhist[0]=round((255*((float)hist[0])/(P*Q)));
 	cumhist_temp[0] = cumhist[0];
 
@@ -470,7 +453,10 @@ int main()
 								   (void*)&tx_done);
 
 	/**************************************************************/
-	printf("TACKA 5!!!!!!!!\n");
+	PERF_RESET(PERFORMANCE_COUNTER_BASE);
+	PERF_START_MEASURING(PERFORMANCE_COUNTER_BASE);
+
+	PERF_BEGIN(PERFORMANCE_COUNTER_BASE, 1);
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS, PROCESS);
 	contrast_control_reg = IORD_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS );
 	printf("contrast_control_reg = %x\n", contrast_control_reg);
@@ -487,6 +473,7 @@ int main()
 
 	alt_avalon_sgdma_stop(sgdma_m2s_contrast);
 	alt_avalon_sgdma_stop(sgdma_s2m_contrast);
+	PERF_END(PERFORMANCE_COUNTER_BASE, 1);
 
 	free(m2s_desc_contrast_copy);
 	free(s2m_desc_contrast_copy);
@@ -499,16 +486,22 @@ int main()
 		printf("hist[%d] = %d\n",i , hist[i]);
 
 
-	fp = fopen("/mnt/host/bright512_output.bin", "wb");
+	fp = fopen("/mnt/host/dark64_output.bin", "wb");
 
-	fwrite(&width, 1, 4, fp);
-	fwrite(&height, 1, 4, fp);
+	fwrite(&width, sizeof(width), 1, fp);
+	fwrite(&height, sizeof(height), 1, fp);
 	fwrite(output_image, 1, width*height, fp);
 	printf("OUTPUT IMAGE WRITTEN!\n");
 	fclose(fp);
 
 	free(output_image);
 	free(input_image);
+
+	perf_print_formatted_report(PERFORMANCE_COUNTER_BASE,
+								alt_get_cpu_freq(),
+								1,
+								"Jednostavna"
+								);
 
 	printf("Exiting...");
 	return 0;

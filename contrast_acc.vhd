@@ -86,8 +86,9 @@ end component;
 				processing_wait_input,
 				process_input,
 				wait_output,
-				full_process,
-				wait_output_and_process
+				-- full_process,
+				-- wait_output_and_process,
+				done
 				); 	
 	signal current_state, next_state : state;
 	
@@ -137,6 +138,7 @@ end component;
 	signal lut_address : integer range 0 to 255 := 0;
 	signal small_cnt : integer range 0 to 2 := 0;
 	signal int_asi_in_ready : std_logic := '0';
+	signal output_sample : std_logic_vector (7 downto 0):= x"00";
 
 begin	
 
@@ -176,7 +178,7 @@ begin
 	
 	asi_in_ready <= int_asi_in_ready;
 	
-	aso_out_data <= q_lut;
+	aso_out_data <= output_sample;
 	
 	read_regs: process(clk, reset)
 	begin
@@ -233,49 +235,25 @@ begin
 				address_lut <= std_logic_vector(to_unsigned(lut_address, 8));
 			elsif (current_state = idle or current_state = configuration_done) then
 				address_lut <= x"0C";
-			else
+			elsif (asi_in_valid = '1' and int_asi_in_ready = '1' ) then
 				address_lut <= asi_in_data;
 			end if;
 		end if;
 	end process;
-	
-	-- wren_control: process(clk, reset, c_res)
-	-- begin
-		-- if (reset = '1' or c_res = '1') then
-			-- wren_lut <= '0';
-		-- elsif (rising_edge(clk)) then
-			-- if (current_state = configuration_process) then
-				-- wren_lut <= '1';
-			-- else
-				-- wren_lut <= '0';
-			-- end if;	
-		-- end if;
-	-- end process;
-	
+		
 	small_cnt_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
 			small_cnt <= 0;
 		elsif(rising_edge(clk)) then
-			if (current_state = configuration_wait_state) then
+			if (current_state = configuration_wait_state or current_state = process_input) then
 				small_cnt <= small_cnt + 1;
 			elsif (current_state = configuration_process) then
 				small_cnt <= 0;	
 			end if;	
 		end if;
 	end process;
-	
-	s_nopp_control: process(clk, reset, c_res)
-	begin
-		if (reset = '1' or c_res = '1' or current_state = idle) then
-			s_nopp <= 0;
-		elsif(rising_edge(clk)) then
-			if (((current_state = process_input) or ((current_state = full_process or current_state = wait_output_and_process) and aso_out_ready = '1'))) then
-				s_nopp <= s_nopp + 1;
-			end if;	
-		end if;
-	end process;
-	
+		
 	data_lut_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -289,6 +267,15 @@ begin
 		end if;
 	end process;
 	
+	process_sample : process(clk, reset)
+	begin
+		if (reset = '1') then
+			output_sample <= x"00";
+		elsif (rising_edge(clk)) then
+			output_sample <= q_lut;
+		end if;
+	end process;
+	
 	-- ideja je Moore-ova masina stanja da se napravi
 	control_fsm: process(clk, reset, c_res)
 	begin
@@ -299,7 +286,7 @@ begin
 		end if;
 	end process;
 	
-	streaming_protocol: process(current_state,c_conf, asi_in_valid, address_lut) -- mozda ce da fali jos nesto kasnije u senz listi
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready) -- mozda ce da fali jos nesto kasnije u senz listi
 	begin
 		case current_state is
 		
@@ -354,9 +341,7 @@ begin
 			when processing_wait_input =>
 				aso_out_valid <= '0';
 				int_asi_in_ready <= '1';
-			
-				next_state <= processing_wait_input;
-				
+		
 				if (asi_in_valid = '1') then
 					next_state <= process_input;
 				else
@@ -365,64 +350,28 @@ begin
 
 			when process_input =>
 				aso_out_valid <= '0';
-				int_asi_in_ready <= '1';
+				int_asi_in_ready <= '0';
 				
-				if (asi_in_valid = '1') then
-					next_state <= full_process;
-				else
+				if (small_cnt = 2) then
 					next_state <= wait_output;
+				else
+					next_state <= process_input;
 				end if;
 				
 			when wait_output =>
 				aso_out_valid <= '1';
-				int_asi_in_ready <= '1';
+				int_asi_in_ready <= '0';
 				
 				if (aso_out_ready = '1') then
-					if (s_nop > to_unsigned(s_nopp, 19)) then
-						if (asi_in_valid = '1') then
-							next_state <= process_input;
-						else
-							next_state <= processing_wait_input;
-						end if;
-					end if;
+					next_state <= processing_wait_input;
 				else
-					if (asi_in_valid = '1') then
-						next_state <= wait_output_and_process;
-					elsif (s_nop = to_unsigned(s_nopp, 19)) then
-						next_state <= wait_output_and_process;
-					else
-						next_state <= wait_output;
-					end if;
-					
+					next_state <= wait_output;
 				end if;
 			
-			when full_process =>
-				aso_out_valid <= '1';
-				int_asi_in_ready <= '1';
-
-				if (aso_out_ready = '1' and asi_in_valid = '1') then
-					next_state <= full_process;
-				elsif (aso_out_ready = '1' and asi_in_valid = '0') then
-					next_state <= wait_output;
-				else
-					int_asi_in_ready <= '0';
-					next_state <= wait_output_and_process;
-				end if;
-				
-			when wait_output_and_process =>
-				aso_out_valid <= '1';
+			when done =>
+				aso_out_valid <= '0';
 				int_asi_in_ready <= '0';
-
-				if (aso_out_ready = '1') then
-					if (asi_in_valid = '1') then
-						int_asi_in_ready <= '1';
-						next_state <= full_process;
-					else
-						next_state <= wait_output;
-					end if;
-				else
-					next_state <= wait_output_and_process;
-				end if;
+				next_state <= done;
 		end case;
 	 end process;
 	
@@ -486,15 +435,8 @@ begin
 --				int_asi_in_ready <= '1';
 				wren_lut <= '0';
 			
-			when full_process =>
-				state_machine_state <= "1000";
-				status_reg_state <= "10";
---				aso_out_valid <= '1';
---				int_asi_in_ready <= '1';
-				wren_lut <= '0';
-				
-			when wait_output_and_process =>
-				state_machine_state <= "1001";
+			when done =>
+				state_machine_state <= "1101";
 				status_reg_state <= "10";
 --				aso_out_valid <= '1';
 --				int_asi_in_ready <= '0';
