@@ -102,7 +102,7 @@ int main()
 
 	// Instead of bright64.bin available binary files are:
 	  //bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
-	fp = fopen("/mnt/host/dark64.bin", "rb");
+	fp = fopen("/mnt/host/dark512.bin", "rb");
 
 	// First 4 bytes represents the width of a picture
 	fread(&width, 4, 1, fp);
@@ -486,7 +486,7 @@ int main()
 		printf("hist[%d] = %d\n",i , hist[i]);
 
 
-	fp = fopen("/mnt/host/dark64_output.bin", "wb");
+	fp = fopen("/mnt/host/dark512_output.bin", "wb");
 
 	fwrite(&width, sizeof(width), 1, fp);
 	fwrite(&height, sizeof(height), 1, fp);

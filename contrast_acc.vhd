@@ -1,12 +1,15 @@
 -- contrast_acc.vhd
 
--- This file was auto-generated as a prototype implementation of a module
--- created in component editor.  It ties off all outputs to ground and
--- ignores all inputs.  It needs to be edited to make it do something
--- useful.
--- 
--- This file will not be automatically regenerated.  You should check it in
--- to your version control system if you want to keep it.
+-- This file represents hardware accelerator which purpose is to map intensity of pixeles
+-- coming from input image to output image. Mapping is defined through array of 256 elements
+-- of cumulative histogram which is stored in RAM. Module consists of two state machines,
+-- one for configuration and one for process of input image pixels. During configuration state
+-- cumulative histogram calculated in software is passed to module with memory to stream interface
+-- and those values are stored as array of 8-bit elements in RAM. When configuration is done,
+-- module is ready to enter process state (waits for software bit to be set) in which he maps 
+-- input image pixels to output image using those values stored in RAM (acts as LUT). During
+-- process state, output image pixels are returned to memory through stream to memory interface.
+-- Module also has Memory Mapped interface which consists of control, and status register.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -56,7 +59,6 @@ end component;
 	--	|-------|-------|----------|-----------|---------|
 	--	|   7   |   6   |   5      |     4     |   3..0  |
 	--	--------------------------------------------------
-
 	signal control_reg : std_logic_vector(7 downto 0) := x"00";
 	
 	--	STATUS_REG
@@ -66,7 +68,6 @@ end component;
 	--	|----------|---------------------|------------------|
 	--	|   7..6   |		5..2		 |       1..0       |
 	--	---------------------------------|-------------------
-
 	signal status_reg : std_logic_vector (7 downto 0) := x"00";
 	
 	-- oznacava da je kontrolni registar adresiran, i da je avs_control_write bit aktivan
@@ -240,7 +241,7 @@ begin
 			end if;
 		end if;
 	end process;
-		
+
 	small_cnt_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -253,7 +254,18 @@ begin
 			end if;	
 		end if;
 	end process;
-		
+	
+	s_nopp_control: process(clk, reset, c_res)
+	begin
+		if (reset = '1' or c_res = '1' or current_state = idle) then
+			s_nopp <= 0;
+		elsif(rising_edge(clk)) then
+			if (aso_out_ready = '1' and current_state = wait_output) then
+				s_nopp <= s_nopp + 1;
+			end if;	
+		end if;
+	end process;
+	
 	data_lut_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -272,7 +284,7 @@ begin
 		if (reset = '1') then
 			output_sample <= x"00";
 		elsif (rising_edge(clk)) then
-			output_sample <= q_lut;
+				output_sample <= q_lut;
 		end if;
 	end process;
 	
@@ -286,14 +298,11 @@ begin
 		end if;
 	end process;
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready) -- mozda ce da fali jos nesto kasnije u senz listi
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, s_nopp, s_nop) -- mozda ce da fali jos nesto kasnije u senz listi
 	begin
 		case current_state is
 		
-			when idle =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
-			
+			when idle =>	
 				if (c_conf = '1') then
 					next_state <= configuration_wait_input;
 				else	
@@ -301,9 +310,7 @@ begin
 				end if;	
 			
 			when configuration_wait_input =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '1';
-			
+	
 				if (address_lut = x"ff") then
 					next_state <= configuration_done;
 				elsif (asi_in_valid = '1') then
@@ -313,9 +320,7 @@ begin
 				end if;
 			
 			when configuration_wait_state =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';			
-			
+
 				if (small_cnt = 2) then
 					next_state <= configuration_process;
 				else
@@ -323,14 +328,10 @@ begin
 				end if;
 			
 			when configuration_process =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
-				
+
 				next_state <= configuration_wait_input;
 			
 			when configuration_done =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
 			
 				if (c_process = '1') then
 					next_state <= processing_wait_input;
@@ -339,19 +340,17 @@ begin
 				end if;
 				
 			when processing_wait_input =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '1';
 		
-				if (asi_in_valid = '1') then
+				if (s_nop = to_unsigned(s_nopp, 19)) then
+					next_state <= done;
+				elsif (asi_in_valid = '1') then
 					next_state <= process_input;
 				else
 					next_state <= processing_wait_input;
 				end if;
 
 			when process_input =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
-				
+		
 				if (small_cnt = 2) then
 					next_state <= wait_output;
 				else
@@ -359,19 +358,16 @@ begin
 				end if;
 				
 			when wait_output =>
-				aso_out_valid <= '1';
-				int_asi_in_ready <= '0';
-				
+
 				if (aso_out_ready = '1') then
 					next_state <= processing_wait_input;
 				else
 					next_state <= wait_output;
 				end if;
-			
+				
 			when done =>
-				aso_out_valid <= '0';
-				int_asi_in_ready <= '0';
 				next_state <= done;
+
 		end case;
 	 end process;
 	
@@ -382,64 +378,64 @@ begin
 			when idle => 
 				state_machine_state <= "0000";
 				status_reg_state <= "00";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '0';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
 				
 			when configuration_wait_input =>
 				state_machine_state <= "0001";
 				status_reg_state <= "01";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '1';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '1';
 				wren_lut <= '0';
 				
 			when configuration_wait_state =>
 				state_machine_state <= "0010";
 				status_reg_state <= "01";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '0';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
 				
 			when configuration_process =>
 				state_machine_state <= "0011";
 				status_reg_state <= "01";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '0';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '1';				
 		
 			when configuration_done =>
 				state_machine_state <= "0100";
 				status_reg_state <= "00";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '0';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
 
 			when processing_wait_input =>
 				state_machine_state <= "0101";
 				status_reg_state <= "10";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '1';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '1';			
 				wren_lut <= '0';
 				
 			when process_input =>
 				state_machine_state <= "0110";
 				status_reg_state <= "10";
---				aso_out_valid <= '0';
---				int_asi_in_ready <= '1';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
 			
 			when wait_output =>
 				state_machine_state <= "0111";
 				status_reg_state <= "10";
---				aso_out_valid <= '1';
---				int_asi_in_ready <= '1';
+				aso_out_valid <= '1';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
-			
+					
 			when done =>
 				state_machine_state <= "1101";
 				status_reg_state <= "10";
---				aso_out_valid <= '1';
---				int_asi_in_ready <= '0';
+				aso_out_valid <= '0';
+				int_asi_in_ready <= '0';
 				wren_lut <= '0';
 				
 		end case;
