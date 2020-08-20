@@ -41,6 +41,7 @@ end entity contrast_acc;
 
 architecture rtl of contrast_acc is
 
+-- This component is 256x8 RAM where cumulative histogram values are stored.
 component lut is
 	port
 	(
@@ -53,7 +54,7 @@ component lut is
 end component;
 
 	--	CONTROL_REG
-	--  Sa njim moze da se vrsi i upis i citanje.
+	--  Control register can be read from, and written to.
 	--	__________________________________________________
 	--	| c_run | c_res | c_conf   | c_process |reserved |
 	--	|-------|-------|----------|-----------|---------|
@@ -62,7 +63,8 @@ end component;
 	signal control_reg : std_logic_vector(7 downto 0) := x"00";
 	
 	--	STATUS_REG
-	--  Iz statusnog registra moze samo da se cita.
+	--  Status register can only be read from, and is used to signal software
+	--  in which state machine is.
 	--	_____________________________________________________
 	--	| reserved | state_machine_state | status_reg_state |
 	--	|----------|---------------------|------------------|
@@ -87,62 +89,83 @@ end component;
 				processing_wait_input,
 				process_input,
 				wait_output,
-				-- full_process,
-				-- wait_output_and_process,
 				done
 				); 	
 	signal current_state, next_state : state;
 	
+	-- Number of pixels register addresses 
 	constant NOP_LOW_ADDR		: std_logic_vector(2 downto 0) := "010";
 	constant NOP_MIDDLE_ADDR	: std_logic_vector(2 downto 0) := "011";
 	constant NOP_HIGH_ADDR		: std_logic_vector(2 downto 0) := "100";
 	
+	-- Number of pixels registers
 	signal nop_low	: std_logic_vector ( 7 downto 0) := x"00";
 	signal nop_middle : std_logic_vector (7 downto 0 ) := x"00";
 	signal nop_high : std_logic_vector ( 7 downto 0) := x"00";
 	
+	-- Signals that number of pixels registers are addressed, and write signal is active
 	signal nop_low_strobe : std_logic := '0';
 	signal nop_middle_strobe : std_logic := '0';
 	signal nop_high_strobe : std_logic := '0';
 
-	-- pomocni signal koji omogucava citanje iz registra, za avs_control_waitrequest
+	-- Signal which is needed in order to read from registers.
 	signal control_waitrq : std_logic;
 	
+	-- Output register multiplexer for MM registers.
 	signal out_mux : std_logic_vector (7 downto 0);
 	
-	-- prva 3 bita statusnog registra, oznacavaju stanje
+	-- Status register bits declarations.
 	signal status_reg_state : std_logic_vector (1 downto 0);
 	signal state_machine_state : std_logic_vector (3 downto 0);
 	
-	-- softverski znak da modul treba da zapocne rad
+	-- Software run bit.
 	signal c_run : std_logic;
 	
-	-- softverski reset
+	-- Software reset bit.
 	signal c_res : std_logic;
 	
-	--bit koji oznacava start konfiguracije
+	-- Software start configuration bit.
 	signal c_conf : std_logic;
 	
-	--bit koji oznacava start procesiranja
+	-- Software start processing bit.
 	signal c_process : std_logic;
 	
-	-- oznacava broj obradjenih piksela
+	-- Number of finished pixels.
 	signal s_nopp : integer range 0 to 262144 := 0;
 	
+	-- Total number of pixels, taken from MM registers.
 	signal s_nop : unsigned (18 downto 0);
+	
+	-- Signal used for reading from MM registers.
 	signal wait_signal : std_logic;
 	
+	-- RAM address.
 	signal address_lut : std_logic_vector (7 downto 0) := x"00";
+	
+	-- RAM data.
 	signal data_lut : std_logic_vector ( 7 downto 0) := x"00";
+	
+	-- RAM wren.
 	signal wren_lut : std_logic := '0';
+	
+	-- RAM output buffer.
 	signal q_lut : std_logic_vector ( 7 downto 0) := x"00";
+	
+	-- Signal used for RAM address control.
 	signal lut_address : integer range 0 to 255 := 0;
+	
+	-- Signal used as wait for RAM output to be valid.
 	signal small_cnt : integer range 0 to 2 := 0;
+	
+	-- Internal ready signal for input SGDMA.
 	signal int_asi_in_ready : std_logic := '0';
+	
+	-- Used for aso_out_data control .
 	signal output_sample : std_logic_vector (7 downto 0):= x"00";
 
 begin	
 
+	-- RAM bindings.
 	LUT_MEMORY:lut
 	port map
 	(
@@ -153,11 +176,13 @@ begin
 		q		=>	q_lut
 	);
 	
+	-- Strobe definitions.
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
 	nop_low_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_LOW_ADDR) else '0';
 	nop_middle_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_MIDDLE_ADDR) else '0';
 	nop_high_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_HIGH_ADDR) else '0';
 	
+	-- Output multiplexer definitions.
 	out_mux <= control_reg when (avs_control_address = CONTROL_ADDR) else
 			nop_low when (avs_control_address = NOP_LOW_ADDR) else
 			nop_middle when (avs_control_address = NOP_MIDDLE_ADDR) else
@@ -165,22 +190,28 @@ begin
 			status_reg when (avs_control_address = STATUS_ADDR) else
 			x"AA";
 	
+	-- Total number of pixels are stored in this buffer.
 	s_nop (18 downto 16) <= unsigned(nop_high(2 downto 0));
 	s_nop (15 downto 8)  <= unsigned(nop_middle);
 	s_nop (7 downto 0)	<= unsigned(nop_low);
 	
+	-- Control register bits definitions.
 	c_run <= control_reg(7);
 	c_res <= control_reg(6);
 	c_conf <= control_reg(5);
 	c_process <= control_reg(4);
 	
+	-- Status register bits definitions.
 	status_reg(1 downto 0) <= status_reg_state;
 	status_reg(5 downto 2) <= state_machine_state;
 	
+	-- Control of asi_in_ready is done through int_asi_in_ready.
 	asi_in_ready <= int_asi_in_ready;
 	
+	-- Control of aso_out_data is done through output_sample.
 	aso_out_data <= output_sample;
 	
+	-- Process which controls reading from MM registers
 	read_regs: process(clk, reset)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -195,6 +226,7 @@ begin
 		end if;
 	end process;
 	
+	-- Process which controls writing to MM registers
 	write_reg_process : process(clk, reset, avs_control_write) is 
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -215,7 +247,7 @@ begin
 		end if;
 	end process;
 	
-	-- menjanje brojaca
+	-- RAM address counter for configuration state.
 	lut_address_counter_control: process(clk, reset, c_res)
 	begin 
 		if (reset = '1' or c_res = '1') then
@@ -227,6 +259,7 @@ begin
 		end if;
 	end process;
 	
+	-- RAM address control.
 	address_lut_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -242,6 +275,7 @@ begin
 		end if;
 	end process;
 
+	-- Process which controls counter needed for valid output of RAM, after the address was changed ( 2 ticks ).
 	small_cnt_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -255,6 +289,7 @@ begin
 		end if;
 	end process;
 	
+	-- Number of processed pixels control
 	s_nopp_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1' or current_state = idle) then
@@ -266,6 +301,7 @@ begin
 		end if;
 	end process;
 	
+	--RAM data control
 	data_lut_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -279,6 +315,7 @@ begin
 		end if;
 	end process;
 	
+	-- Process which controls stream to memory SGDMA buffer
 	process_sample : process(clk, reset)
 	begin
 		if (reset = '1') then
@@ -288,7 +325,7 @@ begin
 		end if;
 	end process;
 	
-	-- ideja je Moore-ova masina stanja da se napravi
+	-- Moore machine state
 	control_fsm: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -298,7 +335,8 @@ begin
 		end if;
 	end process;
 	
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, s_nopp, s_nop) -- mozda ce da fali jos nesto kasnije u senz listi
+	-- Transition between states are controled in this process
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, s_nopp, s_nop)
 	begin
 		case current_state is
 		
@@ -371,6 +409,7 @@ begin
 		end case;
 	 end process;
 	
+	-- Output state machine ( Moore )
 	output_process: process(current_state) is
 	begin
 		case(current_state) is		
@@ -446,7 +485,7 @@ begin
 	aso_out_empty<= '0';
 	
 	
-	-- da bi moglo da se cita iz registra
+	-- Needed to read from MM registers
 	avs_control_waitrequest <= avs_control_read and wait_signal;
 
 end architecture rtl; -- of contrast_acc
