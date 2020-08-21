@@ -82,14 +82,14 @@ end component;
 	constant CONTROL_ADDR 		: std_logic_vector(2 downto 0) := "001";
 	
 	type state is (idle, 			
-				configuration_wait_input,
-				configuration_wait_state,
-				configuration_process,
-				configuration_done,
-				processing_wait_input,
-				process_input,
-				wait_output,
-				done
+				configuration_wait_input,					-- waits for cumulative histogram array elements
+				configuration_wait_state,					-- waits for value in output buffer of RAM to be valid
+				configuration_process,						-- respective counter values are updated in this state
+				configuration_done,							-- configuration written to RAM
+				processing_wait_input,						-- waits for input image pixels
+				process_input,								-- waits for value in output buffer of RAM to be valid
+				wait_output,								-- waits for stream to memory SGMDA to be ready to receive valid value
+				done										-- done with processing
 				); 	
 	signal current_state, next_state : state;
 	

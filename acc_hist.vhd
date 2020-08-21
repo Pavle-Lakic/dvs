@@ -1,12 +1,12 @@
 -- acc_hist.vhd
 
--- This file was auto-generated as a prototype implementation of a module
--- created in component editor.  It ties off all outputs to ground and
--- ignores all inputs.  It needs to be edited to make it do something
--- useful.
--- 
--- This file will not be automatically regenerated.  You should check it in
--- to your version control system if you want to keep it.
+-- This file represents hardware solution for caluculating histogram of input image.
+-- Inputs are pixels of input image, where the output is calculated histogram. Module
+-- consists of two SGDMA and 1 memory mapped interface. One SGDMA is memory to stream,
+-- whose purpose is to transfer pixels of input image to module. Second SGDMA transfers
+-- histogram from module back to software. Memory mapped register consists out of five
+-- different registers: control, status and three more 8 bit register which combined
+-- represent number of pixels to be processed.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -50,7 +50,7 @@ architecture rtl of acc_hist is
 	end component;
 
 	--	CONTROL_REG
-	-- Sa njim moze da se vrsi i upis i citanje.
+	-- Can be read and written to.
 	--	____________________________
 	--	| c_run | c_res | reserved |
 	--	|   7   |   6   |   5..0   |
@@ -58,15 +58,14 @@ architecture rtl of acc_hist is
 	signal control_reg : std_logic_vector(7 downto 0) := x"00";
 	
 	--	STATUS_REG
-	-- Iz statusnog registra moze samo da se cita.
+	-- Can only be read from
 	--	 ______________________________
 	--	| reserved | status_reg_state |
 	--	|   7..3   |       2..0       |
 
 	signal status_reg : std_logic_vector (7 downto 0) := x"00";
 	
-	-- oznacava da je statusni registar adresiran, i da je avs_control_write bit aktivan
-	signal control_strobe : std_logic;
+
 	
 	-- adresa statusnog registra
 	constant STATUS_ADDR  		: std_logic_vector(2 downto 0) := "000";
@@ -82,84 +81,80 @@ architecture rtl of acc_hist is
 	signal nop_middle : std_logic_vector (7 downto 0 ) := x"00";
 	signal nop_high : std_logic_vector ( 7 downto 0) := x"00";
 	
+	-- Signal strobes: active when register is addressed and write signal is active
+	signal control_strobe : std_logic := '0';
 	signal nop_low_strobe : std_logic := '0';
 	signal nop_middle_strobe : std_logic := '0';
 	signal nop_high_strobe : std_logic := '0';
 
-	-- pomocni signal koji omogucava citanje iz registra, za avs_control_waitrequest
+	-- Needed so it can be properly read from MM registers
 	signal control_waitrq : std_logic;
 	
 	signal out_mux : std_logic_vector (7 downto 0);
 
-	type state is (idle, 			-- cekanje softverskog starta, pre starta treba resetovati RAM							"000"
-					reset_ram,		-- resetovanje ram-a 																	"001"
-					wait_input,		-- nakon starta, cekanje da RAM bude spreman da primi podatak, i ulaz validan			"010"
-					wait_state,		-- pomocno stanje da se saceka validan izlaz na ram-u									"011"
-					process_state,	-- stanje gde su svi izlazi na ramu validni												"100"
-					wait_output,	-- cekanje da izlazni DMA bude spreman da procita podatak								"101"
-					output_read,	-- upis u izlazni DMA																	"110"
-					done); 			-- stanje da je sve zavrseno, iz njega moze nazad samo soft ili hard resetom			"111"
+	type state is (idle, 			-- this state must be entered before any processing, so RAM can be reset				"000"
+					reset_ram,		-- RAM reset state 																		"001"
+					wait_input,		-- waits for input pixel to be valid													"010"
+					wait_state,		-- waits for value in output RAM buffer to be valid										"011"
+					process_state,	-- output buffer of RAM is valid in this state, update counters							"100"
+					wait_output,	-- waits for stream to memory SGDMA to be ready to transmit data back to software		"101"
+					output_read,	-- once valid, write to output SGDMA buffer												"110"
+					done); 			-- processing is complete																"111"
 
 	signal current_state, next_state : state;
 
-	-- ulazni piksel, iz ulaznog DMA, ponasa se kao adresa u RAM-u u ovom modulu
+	-- Pixel of input image.
 	signal input_sample : std_logic_vector(7 downto 0);
 	
-	-- izlazni podatak, u izlazni DMA
+	-- Output sample, used for output SGDMA.
 	signal output_sample : std_logic_vector(15 downto 0);
 	
-	-- za sada se ne koristi, moze kasnije kao specificni ulazni podatak u RAM
+	-- This is value that is sent to data bus of RAM.
 	signal data_ram	: std_logic_vector(15 downto 0) := x"0000";
 	
-	-- signal dozvole za upis u RAM, za sada se ne koristi
+	-- Write enable for RAM.
 	signal wren_ram : std_logic;
 	
-	-- signal da je spreman podatak na nekoj adresi da se procita iz RAM, za stanje output_read sluzi
-	signal adrr_ready_ram : std_logic;
-	
-	-- signal za postavljanje svih podataka u RAM-u na 0
-	signal c_clear : std_logic;
-	
-	-- signal koji sluzi da se na postavljenoj adresi podatak poveca za 1
-	signal inc_ram : std_logic;
-	
-	-- oznacava da je RAM spreman da primi nov podatak
-	signal in_ready_ram : std_logic;
-	
-	-- oznacava da je na izlaznom baferu u ramu validan podatak
-	signal out_valid_ram : std_logic;
-	
-	-- izlazni podatak iz RAM-a
+	-- Output RAM buffer.
 	signal q_ram : std_logic_vector (15 downto 0);
 	
-	-- softverski znak da modul treba da zapocne rad
+	-- Software run bit.
 	signal c_run : std_logic;
 	
-	-- softverski reset
+	-- Software reset bit.
 	signal c_res : std_logic;
 	
-	-- prva 3 bita statusnog registra, oznacavaju stanje
+	-- State in which machine is in.
 	signal status_reg_state : std_logic_vector (2 downto 0);
 	
-	-- oznacava broj obradjenih piksela
+	-- Number of processed pixels.
 	signal s_nopp : integer range 0 to 262144 := 0;
 	
-	signal read_reg : std_logic_vector ( 7 downto 0 );
-	
+	-- Needed to be properly read from MM registers.
 	signal wait_signal : std_logic;
+	
+	-- Used for RAM address control.
 	signal address_ram : std_logic_vector (7 downto 0);
 	
+	-- address_ram is controled through this signal when in reset_ram or wait_output.
 	signal ram_address : integer range 0 to 255 := 0;
 	
-	-- signal koji oznacava broj piksela koji treba da se obradi
+	-- Combined from nop_low, nop_middle, nop_high, represents total number of pixels to be processed.
 	signal s_nop : unsigned (18 downto 0);	
+	
+	-- Used as wait signal for valid value in RAM output buffer.
 	signal small_cnt : integer range 0 to 2 := 0;
+	
+	-- Control of asi_in_ready.
 	signal int_asi_in_ready : std_logic := '0';
+	
+	-- Control of asi_in_data.
 	signal int_asi_in_data : std_logic_vector ( 7 downto 0) := (others => '0');
 	
 	
 begin
 
+	-- 256x8 bit RAM
 	RAM_MEMORY:ram_8
 	port map
 	(
@@ -170,12 +165,13 @@ begin
 		q		=>	q_ram
 	);
 
-	-- za upis u kontrolni registar
+	-- Strobe control.
 	control_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = CONTROL_ADDR) else '0';
 	nop_low_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_LOW_ADDR) else '0';
 	nop_middle_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_MIDDLE_ADDR) else '0';
 	nop_high_strobe <= '1' when (avs_control_write = '1') and (avs_control_address = NOP_HIGH_ADDR) else '0';
 	
+	-- Output multiplexer control.
 	out_mux <= control_reg when (avs_control_address = CONTROL_ADDR) else
 			nop_low when (avs_control_address = NOP_LOW_ADDR) else
 			nop_middle when (avs_control_address = NOP_MIDDLE_ADDR) else
@@ -183,18 +179,22 @@ begin
 			status_reg when (avs_control_address = STATUS_ADDR) else
 			x"AA";
 	
+	-- Combination of pixel buffer, result is total number of pixels passed to module.
 	s_nop (18 downto 16) <= unsigned(nop_high(2 downto 0));
 	s_nop (15 downto 8)  <= unsigned(nop_middle);
 	s_nop (7 downto 0)	<= unsigned(nop_low);
 	
+	-- Software run and reset assign.
 	c_run <= control_reg(7);
 	c_res <= control_reg(6);
 	
+	-- Status assign
 	status_reg(2 downto 0) <= status_reg_state;
 	
-	--za izlazni DMA
+	-- Output value of SGMDA assign.
 	aso_out_data <= q_ram;
 
+	-- Process which controls reading from MM registers.
 	read_regs: process(clk, reset)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -209,7 +209,7 @@ begin
 		end if;
 	end process;
 	
-	-- proces za upis u kontrolni registar
+	-- Writing to MM registers control
 	write_reg_process : process(clk, reset, avs_control_write) is 
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -240,7 +240,7 @@ begin
 		end if;	
 	end process;
 	
-	-- ideja je Moore-ova masina stanja da se napravi
+	-- Moore machine state.
 	control_fsm: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -250,7 +250,7 @@ begin
 		end if;
 	end process;	
 	
-	-- menjanje brojaca
+	-- ram_address counter control.
 	ram_address_counter_control: process(clk, reset, c_res)
 	begin 
 		if (reset = '1' or c_res = '1') then
@@ -264,7 +264,7 @@ begin
 		end if;
 	end process;
 	
-	ram_address_control: process(clk, reset, c_res)
+	address_ram_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
 			address_ram <= x"00";
@@ -277,6 +277,7 @@ begin
 		end if;
 	end process;
 	
+	-- Control of when pixel is processed.
 	s_nopp_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -292,6 +293,7 @@ begin
 		end if;
 	end process;
 	
+	-- RAM data control, all zeroes in reset state, or add one to current value of output buffer in process_state
 	data_ram_control: process(clk, reset, c_res)
 	begin
 		if (reset = '1' or c_res = '1') then
@@ -320,8 +322,8 @@ begin
 	
 	asi_in_ready <= int_asi_in_ready;
 	
-	-- nova logika masine stanja
-	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run) -- mozda ce da fali jos nesto kasnije u senz listi
+	-- Machine state control.
+	streaming_protocol: process(current_state, asi_in_valid, aso_out_ready, c_run)
 	begin
 		case current_state is
 			when idle =>		
@@ -379,7 +381,7 @@ begin
 		 end case;
 	 end process;
 	
-	-- na osnovu stanja postavlja izlaze
+	-- Output machine state.
 	output_process: process(current_state) is
 	begin
 		case(current_state) is			
@@ -429,7 +431,7 @@ begin
 	aso_out_sop <= '0';
 	aso_out_empty<= '0';
 	
-	-- da bi moglo da se cita iz registra
+	-- Needed to properly read from MM registers.
 	avs_control_waitrequest <= avs_control_read and wait_signal;
 
 end architecture rtl; -- of acc_hist
