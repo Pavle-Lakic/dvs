@@ -23,6 +23,11 @@
 #include "sys/alt_cache.h"
 
 /*
+ * set to 1 to see debug messages.
+ */
+#define DEBUG 	0
+
+/*
  * address definitions
  */
 #define STATUS_ADDRESS  0x00
@@ -51,13 +56,17 @@ alt_u8 *output_image;
 void transmit_callback_function(void * context)
 {
 	tx_done = 1;
+#if DEBUG
 	printf("Tx done\n");
+#endif
 }
 
 void receive_callback_function(void * context)
 {
 	rx_done = 1;
+#if DEBUG
 	printf("Rx done\n");
+#endif
 }
 
 
@@ -65,21 +74,34 @@ int main()
 {
 	alt_u32  nop = 0;
 
-	alt_u32 i = 0, j = 0;
+	alt_u32 i = 0;
 
-	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
+	/*
+	 * Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
+	 */
 	alt_u32 mtl = 0, mbr = 1, ntl = 0, nbr = 1;
 
-	//Width and height of input picture - initialization
+	/*
+	 * Width and height of input picture - initialization
+	 */
 	alt_u32  width = 0, height = 0;
 
+	/*
+	 * Values of number of pixel bytes later to be combined to total number of pixels in hardware.
+	 * Hardware sees these values as three eight bit values.
+	 */
 	alt_u32 nop_low = 0;
 	alt_u32 nop_middle = 0;
 	alt_u32 nop_high = 0;
 
+	/*
+	 * Cumulative histogram array will be stored here
+	 */
 	alt_u8 cumhist[256] = {0};
 
-	// Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
+	/*
+	 * Positions of corner pixels of rectangle in the picture on which the contrast is going to be done
+	 */
 	printf("Enter x position of top left pixel:\n");
 	scanf("%lu", &mtl);
 
@@ -92,43 +114,57 @@ int main()
 	printf("Enter y position of bottom right pixel:\n");
 	scanf("%lu", &nbr);
 
-	// Sizes of rectangle sides - initialization
+	/*
+	 * Sizes of rectangle sides - initialization
+	 */
 	alt_u32 P =0, Q = 0;
 
-	//Histogram initialization
+	/*
+	 * Histogram initialization
+	 */
 	alt_u16 hist[256]={0};
 
 	FILE* fp;
 
-	// Instead of bright64.bin available binary files are:
-	  //bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
+	/*
+	 * Instead of bright64.bin available binary files are:
+	 * bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
+	 */
 	fp = fopen("/mnt/host/dark512.bin", "rb");
 
-	// First 4 bytes represents the width of a picture
+	/*
+	 * First 4 bytes represents the width of a picture
+	 */
 	fread(&width, 4, 1, fp);
 
-	// Second 4 bytes represents the height of a picture
+	/*
+	 * Second 4 bytes represents the height of a picture
+	 */
 	fread(&height, 4, 1, fp);
 
-	// Allocating memory for input image
+	/*
+	 * Allocating memory for input image
+	 */
 	input_image = (unsigned char*) malloc(width*height);
 
-	// Allocating memory for input image
+	/*
+	 * Allocating memory for input image
+	 */
 	output_image = (unsigned char*) malloc(width*height);
 
-	// Coping image pixels to input_image array
+	/*
+	 * Coping image pixels to input_image array
+	 */
+	printf("Reading input image pixels ...\n");
 	fread(input_image, 1, width*height, fp);
 	printf("Input image loaded!\n");
 	fclose(fp);
 
-	// Coping image pixels to output_image array
-	fread(output_image, 1, width*height, fp);
-	printf("Initial output image loaded!\n");
-	fclose(fp);
-
 	int return_code = 0;
 
-	//Sizes of rectangle sides
+	/*
+	 * Sizes of rectangle sides
+	 */
 	P = mbr - mtl + 1;
 	Q = nbr - ntl + 1;
 
@@ -169,6 +205,10 @@ int main()
 	}
 
 	m2s_desc = (alt_sgdma_descriptor *)temp_ptr;
+	/*
+	 * Clear out the null descriptor owned by hardware bit.  These locations
+	 * came from the heap so we don't know what state the bytes are in (owned bit could be high).
+	 */
 	m2s_desc[Q].control = 0;
 
 
@@ -186,8 +226,7 @@ int main()
 	}
 
 	s2m_desc = (alt_sgdma_descriptor *)temp_ptr;
-	/* Clear out the null descriptor owned by hardware bit.  These locations
-	* came from the heap so we don't know what state the bytes are in (owned bit could be high).*/
+
 	s2m_desc[1].control = 0;
 
 	for (alt_u32 i = 0; i < Q; i++)
@@ -233,40 +272,49 @@ int main()
 
 	//Ubaciti proveru za unos brojeva
 	nop = P * Q;
-	printf("Number of pixels %i\n", nop);
+	printf("Total number of pixels to be processed =  %lu\n", nop);
 
 	nop_low = nop & 0x000000ff;
 	nop_middle = (nop & 0x0000ff00) >> 8;
 	nop_high = (nop & 0x00070000) >> 16;
 
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS, nop_low);
+
+#if DEBUG
 	nop_low = IORD_8DIRECT(ACC_HIST_BASE, NOP_LOW_ADDRESS );
 	printf("nop_low = %x\n", nop_low);
+#endif
 
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS, nop_middle);
+
+#if DEBUG
 	nop_middle = IORD_8DIRECT(ACC_HIST_BASE, NOP_MIDDLE_ADDRESS );
 	printf("nop_middle = %x\n", nop_middle);
+#endif
 
 	IOWR_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS, nop_high);
+
+#if DEBUG
 	nop_high = IORD_8DIRECT(ACC_HIST_BASE, NOP_HIGH_ADDRESS );
 	printf("nop_high = %x\n", nop_high);
+#endif
 
 	IOWR_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS, RUN);
+
+#if DEBUG
 	alt_u8 control_reg = IORD_8DIRECT(ACC_HIST_BASE, CONTROL_ADDRESS );
 	printf("control_reg = %x\n", control_reg);
 
 	alt_u8 status_reg = IORD_8DIRECT(ACC_HIST_BASE, STATUS_ADDRESS);
 	printf("status_reg = %x\n", status_reg);
+#endif
 
 	alt_u32 transmit_status = alt_avalon_sgdma_do_async_transfer(sgdma_m2s, &m2s_desc[0]);
-
 	while(tx_done < 1) {}
+	tx_done = 0;
 
 	alt_u32 receive_status = alt_avalon_sgdma_do_async_transfer(sgdma_s2m, &s2m_desc[0]);
-
 	while(rx_done < 1) {}
-
-	tx_done = 0;
 	rx_done = 0;
 
 
@@ -284,21 +332,36 @@ int main()
 	/**************************************************************/
 
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, NOP_LOW_ADDRESS, nop_low);
+
+#if DEBUG
 	nop_low = IORD_8DIRECT(CONTRAST_ACC_BASE, NOP_LOW_ADDRESS );
 	printf("contrast_nop_low = %x\n", nop_low);
+#endif
 
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, NOP_MIDDLE_ADDRESS, nop_middle);
+
+#if DEBUG
 	nop_middle = IORD_8DIRECT(CONTRAST_ACC_BASE, NOP_MIDDLE_ADDRESS );
 	printf("contrast_nop_middle = %x\n", nop_middle);
+#endif
 
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, NOP_HIGH_ADDRESS, nop_high);
+
+#if DEBUG
 	nop_high = IORD_8DIRECT(CONTRAST_ACC_BASE, NOP_HIGH_ADDRESS );
 	printf("contrast_nop_high = %x\n", nop_high);
+#endif
 
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS, CONF);
+
+#if DEBUG
 	alt_u8 contrast_control_reg = IORD_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS );
 	printf("contrast_control_reg = %x\n", contrast_control_reg);
+#endif
 
+	/*
+	 * Cumulative histogram calculation
+	 */
 	alt_u32 cumhist_temp[256] = {0};
 	cumhist[0]=round((255*((float)hist[0])/(P*Q)));
 	cumhist_temp[0] = cumhist[0];
@@ -341,8 +404,6 @@ int main()
 	}
 
 	m2s_desc_contrast = (alt_sgdma_descriptor *)temp_ptr;
-	/* Clear out the null descriptor owned by hardware bit.  These locations
-	* came from the heap so we don't know what state the bytes are in (owned bit could be high).*/
 	m2s_desc_contrast[1].control = 0;
 
 	alt_avalon_sgdma_construct_mem_to_stream_desc(
@@ -369,14 +430,17 @@ int main()
 
 	tx_done = 0;
 
+	/*
+	 * Wait until configuration is done.
+	 */
 	while ((IORD_8DIRECT(CONTRAST_ACC_BASE, STATUS_ADDRESS) & 0x3C) != 0x10 );
 
+#if DEBUG
 	printf("Configuration done!\n");
+#endif
 
 	alt_avalon_sgdma_stop(sgdma_m2s_contrast);
 	free(m2s_desc_contrast_copy);
-
-	printf("Q = %d !!!!!!!!!!!!!\n", Q);
 
 	temp_ptr = malloc((Q + 2) * ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE);
 	if(temp_ptr == NULL)
@@ -384,14 +448,14 @@ int main()
 		printf("Failed to allocate memory for the transmit descriptors\n");
 		return 1;
 	}
-	printf("TACKA 1!!!!!!!!\n");
+
 	m2s_desc_contrast_copy = (alt_sgdma_descriptor *)temp_ptr;
-	printf("TACKA 1.5!!!!!!!!\n");
+
 	while((((alt_u32)temp_ptr) % ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE) != 0)
 	{
 		temp_ptr++;  // slide the pointer until 32 byte boundary is found
 	}
-	printf("TACKA 2!!!!!!!!\n");
+
 	m2s_desc_contrast = (alt_sgdma_descriptor *)temp_ptr;
 	m2s_desc_contrast[Q].control = 0;
 
@@ -401,14 +465,14 @@ int main()
 		printf("Failed to allocate memory for the transmit descriptors\n");
 		return 1;
 	}
-	printf("TACKA 3!!!!!!!!\n");
+
 	s2m_desc_contrast_copy = (alt_sgdma_descriptor *)temp_ptr;
 
 	while((((alt_u32)temp_ptr) % ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE) != 0)
 	{
 		temp_ptr++;  // slide the pointer until 32 byte boundary is found
 	}
-	printf("TACKA 4!!!!!!!!\n");
+
 	s2m_desc_contrast = (alt_sgdma_descriptor *)temp_ptr;
 	s2m_desc_contrast[Q].control = 0;
 
@@ -458,9 +522,11 @@ int main()
 
 	PERF_BEGIN(PERFORMANCE_COUNTER_BASE, 1);
 	IOWR_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS, PROCESS);
+
+#if DEBUG
 	contrast_control_reg = IORD_8DIRECT(CONTRAST_ACC_BASE, CONTROL_ADDRESS );
 	printf("contrast_control_reg = %x\n", contrast_control_reg);
-
+#endif
 
 	transmit_status = alt_avalon_sgdma_do_async_transfer(sgdma_m2s_contrast, &m2s_desc_contrast[0]);
 	receive_status = alt_avalon_sgdma_do_async_transfer(sgdma_s2m_contrast, &s2m_desc_contrast[0]);
@@ -478,20 +544,22 @@ int main()
 	free(m2s_desc_contrast_copy);
 	free(s2m_desc_contrast_copy);
 
+#if DEBUG
 	for (i = 0; i < 256; i++)
 		printf("cumhist[%d] = %d\n",i , cumhist[i]);
 
 
 	for (i = 0; i < 256; i++)
 		printf("hist[%d] = %d\n",i , hist[i]);
-
+#endif
 
 	fp = fopen("/mnt/host/dark512_output.bin", "wb");
 
 	fwrite(&width, sizeof(width), 1, fp);
 	fwrite(&height, sizeof(height), 1, fp);
+	printf("Writing output image ...\n");
 	fwrite(output_image, 1, width*height, fp);
-	printf("OUTPUT IMAGE WRITTEN!\n");
+	printf("Output image written!\n\n");
 	fclose(fp);
 
 	free(output_image);
