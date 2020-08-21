@@ -25,7 +25,7 @@
 /*
  * set to 1 to see debug messages.
  */
-#define DEBUG 	0
+#define DEBUG 	1
 
 /*
  * address definitions
@@ -70,7 +70,7 @@ void receive_callback_function(void * context)
 }
 
 
-int main()
+int main(void)
 {
 	alt_u32  nop = 0;
 
@@ -124,13 +124,19 @@ int main()
 	 */
 	alt_u16 hist[256]={0};
 
+	/*
+	 * Sizes of rectangle sides
+	 */
+	P = mbr - mtl + 1;
+	Q = nbr - ntl + 1;
+
 	FILE* fp;
 
 	/*
 	 * Instead of bright64.bin available binary files are:
 	 * bright512.bin, dark64.bin, dark512.bin, low_contrast64.bin, low_contrast512.bin
 	 */
-	fp = fopen("/mnt/host/dark512.bin", "rb");
+	fp = fopen("/mnt/host/low_contrast512.bin", "rb");
 
 	/*
 	 * First 4 bytes represents the width of a picture
@@ -148,9 +154,11 @@ int main()
 	input_image = (unsigned char*) malloc(width*height);
 
 	/*
-	 * Allocating memory for input image
+	 * Allocating memory for output image
 	 */
 	output_image = (unsigned char*) malloc(width*height);
+
+	int return_code = 0;
 
 	/*
 	 * Coping image pixels to input_image array
@@ -159,15 +167,13 @@ int main()
 	fread(input_image, 1, width*height, fp);
 	printf("Input image loaded!\n");
 	fclose(fp);
+/*
+	rewind(fp);
 
-	int return_code = 0;
-
-	/*
-	 * Sizes of rectangle sides
-	 */
-	P = mbr - mtl + 1;
-	Q = nbr - ntl + 1;
-
+	fread(output_image, 1, width*height, fp);
+	printf("Initial output image loaded!\n");
+	fclose(fp);
+*
 	/* Pointers to devices - initialization*/
 	alt_sgdma_dev *sgdma_m2s = alt_avalon_sgdma_open("/dev/sgdma_m2s");
 	alt_sgdma_dev *sgdma_s2m = alt_avalon_sgdma_open("/dev/sgdma_s2m");
@@ -442,7 +448,7 @@ int main()
 	alt_avalon_sgdma_stop(sgdma_m2s_contrast);
 	free(m2s_desc_contrast_copy);
 
-	temp_ptr = malloc((Q + 2) * ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE);
+	temp_ptr = malloc((height + 2) * ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE);
 	if(temp_ptr == NULL)
 	{
 		printf("Failed to allocate memory for the transmit descriptors\n");
@@ -457,9 +463,9 @@ int main()
 	}
 
 	m2s_desc_contrast = (alt_sgdma_descriptor *)temp_ptr;
-	m2s_desc_contrast[Q].control = 0;
+	m2s_desc_contrast[height].control = 0;
 
-	temp_ptr = malloc((Q + 2) * ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE);
+	temp_ptr = malloc((height + 2) * ALTERA_AVALON_SGDMA_DESCRIPTOR_SIZE);
 	if(temp_ptr == NULL)
 	{
 		printf("Failed to allocate memory for the transmit descriptors\n");
@@ -474,26 +480,27 @@ int main()
 	}
 
 	s2m_desc_contrast = (alt_sgdma_descriptor *)temp_ptr;
-	s2m_desc_contrast[Q].control = 0;
+	s2m_desc_contrast[height].control = 0;
 
-	for (alt_u32 i = 0; i < Q; i++)
+	for (alt_u32 i = 0; i < height; i++)
 		alt_avalon_sgdma_construct_mem_to_stream_desc(
 							&m2s_desc_contrast[i],  // current descriptor pointer
 							&m2s_desc_contrast[i+1], // next descriptor pointer
-							(alt_u32*)&input_image[(mtl+i)*width+ntl],  // read buffer location
-							(alt_u16)P,  // length of the buffer
+							(alt_u32*)&input_image[height * i],  // read buffer location
+							(alt_u16)width,  // length of the buffer
 							0, // reads are not from a fixed location
 							0, // start of packet is disabled for the Avalon-ST interfaces
 							0, // end of packet is disabled for the Avalon-ST interfaces,
 							0);  // there is only one channel
 
-	for (alt_u32 i = 0; i < Q; i++)
+	for (alt_u32 i = 0; i < height; i++)
 		alt_avalon_sgdma_construct_stream_to_mem_desc(
 								&s2m_desc_contrast[i],  // current descriptor pointer
 								&s2m_desc_contrast[i+1], // next descriptor pointer
-								(alt_u32*)&output_image[(mtl+i)*width+ntl],  // write buffer location
-								(alt_u16)P,  // length of the buffer
+								(alt_u32*)&output_image[height * i],
+								(alt_u16)width,  // length of the buffer
 								0); // writes are not to a fixed location
+
 
 	/**************************************************************
 	* Register the ISRs that will get called when each (full)  *
@@ -553,7 +560,7 @@ int main()
 		printf("hist[%d] = %d\n",i , hist[i]);
 #endif
 
-	fp = fopen("/mnt/host/dark512_output.bin", "wb");
+	fp = fopen("/mnt/host/low_contrast512_output.bin", "wb");
 
 	fwrite(&width, sizeof(width), 1, fp);
 	fwrite(&height, sizeof(height), 1, fp);

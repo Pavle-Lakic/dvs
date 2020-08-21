@@ -379,9 +379,7 @@ begin
 				
 			when processing_wait_input =>
 		
-				if (s_nop = to_unsigned(s_nopp, 19)) then
-					next_state <= done;
-				elsif (asi_in_valid = '1') then
+				if (asi_in_valid = '1') then
 					next_state <= process_input;
 				else
 					next_state <= processing_wait_input;
