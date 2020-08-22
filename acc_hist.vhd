@@ -231,7 +231,7 @@ begin
 	
 	write_control_reg : process(clk, reset, avs_control_write) is
 	begin
-		if (reset = '1') then
+		if (reset = '1' or c_res = '1') then
 			control_reg <= (others => '0');
 		elsif(rising_edge(clk)) then
 			if (control_strobe = '1') then
