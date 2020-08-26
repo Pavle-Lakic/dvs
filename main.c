@@ -29,6 +29,12 @@
 #define DEBUG 	0
 
 /*
+ * set to 1 to enable software calculation and time consumption by software
+ */
+
+#define SOFTWARE	0
+
+/*
  * Input pictures definitions
  */
 const char LOW_CONTRAST512[] = "/mnt/host/low_contrast512.bin";
@@ -202,7 +208,6 @@ int main(void)
 		printf("Enter y position of bottom right pixel:\n");
 		scanf("%lu", &nbr);
 
-
 		/*
 		 * Sizes of rectangle sides
 		 */
@@ -210,6 +215,94 @@ int main(void)
 		Q = nbr - ntl + 1;
 
 		FILE* fp;
+
+
+		/*
+		 * Software realization of project.
+		 */
+#if SOFTWARE
+
+		alt_u8 *input_image_software, *output_image_software;
+		alt_u32 width_software, height_software;
+
+		fp =  fopen("/mnt/host/dark512.bin", "rb");
+		fread(&width_software, 4, 1 ,fp);
+		fread(&height_software, 4, 1, fp);
+
+#if DEBUG
+		printf("width_software = %lu\n", width_software);
+		printf("height_software = %lu\n", height_software);
+#endif
+		input_image_software = (unsigned char*) malloc(width_software * height_software);
+		output_image_software = (unsigned char*) malloc(width_software * height_software);
+
+		printf("Reading input image pixels for software ...\n");
+		fread(input_image_software, 1, width_software*height_software, fp);
+		printf("Input picture dark512.bin loaded for software!\n");
+		fclose(fp);
+		PERF_RESET(PERFORMANCE_COUNTER_BASE);
+		PERF_START_MEASURING(PERFORMANCE_COUNTER_BASE);
+
+		alt_u32 hist_part[256] = {0};
+		alt_u32 cumhist_part[256] = {0};
+
+		PERF_BEGIN(PERFORMANCE_COUNTER_BASE, 1);
+		/* Function which calculates histogram on predefined part of an image*/
+		for(alt_u32 i=ntl*width_software+mtl;i<=nbr*width_software+mbr;i++)
+		{
+
+			hist_part[*(input_image_software + i)]++;
+			if((i % width_software) == mbr)
+			{
+				i += width_software-mbr+mtl-1;
+			}
+		}
+
+		cumhist_part[0]=hist_part[0];
+
+		for(alt_u32 i=1;i<256;i++)
+		{
+			cumhist_part[i] = cumhist_part[i-1] + hist_part[i];
+		}
+
+		for(alt_u32 i=0;i<256;i++)
+		{
+
+			cumhist_part[i]=round(255*((float)cumhist_part[i])/(P*Q));
+
+		}
+
+		for(alt_u32 l=0; l<width_software*height_software; l++)
+				*(output_image_software+l) = cumhist_part[*(input_image_software + l)];
+
+		PERF_END(PERFORMANCE_COUNTER_BASE, 1);
+
+		//PERF_STOP_MEASURING(PERFORMANCE_COUNTER_BASE);
+
+		perf_print_formatted_report((void *)PERFORMANCE_COUNTER_BASE,
+									alt_get_cpu_freq(),
+									1,
+									"Software"
+									);
+
+		/* Output image is written in binary file  */
+		fp = fopen("/mnt/host/dark512_software.bin", "wb");
+
+		/* Four bytes for width*/
+		fwrite(&width_software, 4, 1, fp);
+
+		/* Four bytes for height*/
+		fwrite(&height_software, 4, 1, fp);
+
+		/* Rest of output image*/
+		fwrite(output_image_software, 1, width_software*height_software, fp);
+
+		fclose(fp);
+
+		free(input_image_software);
+		free(output_image_software);
+#endif SOFTWARE
+
 
 		/*
 		 * Instead of bright64.bin available binary files are:
