@@ -43,6 +43,8 @@ const char DARK512[] = 	"/mnt/host/dark512.bin";
 const char BRIGHT512[] = "/mnt/host/bright512.bin";
 const char DARK64[] = "/mnt/host/dark64.bin";
 const char BRIGHT64[] = "/mnt/host/bright64.bin";
+const char ORIG512[] = "/mnt/host/orig512.bin";
+const char ORIG64[] = "/mnt/host/orig64.bin";
 
 /*
  * Output pictures definitions
@@ -53,6 +55,8 @@ const char DARK512_OUTPUT[] = "/mnt/host/dark512_output.bin";
 const char BRIGHT512_OUTPUT[] = "/mnt/host/bright512_output.bin";
 const char DARK64_OUTPUT[] = "/mnt/host/dark64_output.bin";
 const char BRIGHT64_OUTPUT[] =	"/mnt/host/bright64_output.bin";
+const char ORIG512_OUTPUT[] = "/mnt/host/orig512_output.bin";
+const char ORIG64_OUTPUT[] = "/mnt/host/orig64_output.bin";
 
 /*
  * address definitions
@@ -155,6 +159,8 @@ int main(void)
 		printf("4. dark64.bin\n");
 		printf("5. bright512.bin\n");
 		printf("6. bright64.bin\n");
+		printf("7. orig512.bin\n");
+		printf("8. orig64.bin\n");
 		printf("\n or enter anything else to exit.\n");
 
 		int choice;
@@ -183,9 +189,17 @@ int main(void)
 				strcpy(input_name, BRIGHT512);
 				strcpy(output_name, BRIGHT512_OUTPUT);
 				break;
-			case 6:;
+			case 6:
 				strcpy(input_name, BRIGHT64);
 				strcpy(output_name, BRIGHT64_OUTPUT);
+				break;
+			case 7:
+				strcpy(input_name, ORIG512);
+				strcpy(output_name, ORIG512_OUTPUT);
+				break;
+			case 8:
+				strcpy(input_name, ORIG64);
+				strcpy(output_name, ORIG64_OUTPUT);
 				break;
 			default:
 				printf("\nExit chosen.\n");
@@ -233,6 +247,7 @@ int main(void)
 		printf("width_software = %lu\n", width_software);
 		printf("height_software = %lu\n", height_software);
 #endif
+
 		input_image_software = (unsigned char*) malloc(width_software * height_software);
 		output_image_software = (unsigned char*) malloc(width_software * height_software);
 
